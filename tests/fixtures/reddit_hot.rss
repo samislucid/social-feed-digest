@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <category term="LLMDevs"/>
+  <updated>2026-09-07T01:00:00Z</updated>
+  <id>https://www.reddit.com/r/LLMDevs/.rss</id>
+  <title type="html">r/LLMDevs</title>
+  <entry>
+    <author><name>/u/devone</name></author>
+    <category term="LLMDevs"/>
+    <updated>2026-09-07T00:55:00Z</updated>
+    <id>t3_1abc</id>
+    <title>Local LLM inference benchmarks - September 2026</title>
+    <link href="https://www.reddit.com/r/LLMDevs/comments/1abc/local_llm_inference/"/>
+    <content type="html">&lt;p&gt;Posted some &lt;b&gt;benchmarks&lt;/b&gt; for local inference on consumer GPUs, plus cost per million tokens. More inside.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <author><name>/u/devtwo</name></author>
+    <category term="LLMDevs"/>
+    <updated>2026-09-06T22:10:00Z</updated>
+    <id>t3_1def</id>
+    <title>Agent frameworks: what are you actually using in prod?</title>
+    <link href="https://www.reddit.com/r/LLMDevs/comments/1def/agent_frameworks/"/>
+    <content type="html">&lt;p&gt;Team of three, shipping an agent product. Curious what stacks people run in production.&lt;/p&gt;</content>
+  </entry>
+</feed>

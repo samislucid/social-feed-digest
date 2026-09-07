@@ -1,0 +1,109 @@
+# Topic profile for the Social Feed Digest worker.
+# Seeded from the Topic Profile doc (app://documents/doc_Tto7fGR2lAEImXpV), Sam Kim, September 2026.
+# Edit freely: changes take effect on the next run with no code changes.
+version: 1
+name: "Sam Kim - Social Feed Digest"
+audience: "AI builders and investors, sports fans, Asia-economy and private-markets watchers."
+
+x_search:
+  window_hours: 48          # look-back window for X and web/news sweeps
+  handles: []               # named voices to watch; seed over time (xAI allows max 20)
+  candidate_topics: 8       # candidates requested from the model before ranking
+
+reddit:
+  subreddits:
+    - LLMDevs
+    - ArtificialInteligence
+    - AI_developers
+  limit: 25
+
+portfolio:
+  enabled: true
+  # One batched sweep per day (1-3 searches covering the whole list), folded into that day's digests.
+  watchlist:
+    - Bridge Opportunity Zone Fund V
+    - American Securities
+    - AlpInvest
+    - Ares Senior Direct Lending
+    - General Catalyst
+    - Digital Bridge
+    - Starwood Fund XIII
+    - Dragoneer
+    - 8V
+    - Statera
+    - Sanctor
+    - Khosla Ventures
+    - Lighspeed Ventures
+    - Allocate Opportunity Fund
+    - Fun-Gi
+    - Phoenix Technologies
+    - Contra
+    - Saronic
+    - SpaceX
+    - Altra Venture Opportunity Fund I
+    - Quadrillion
+    - Mercury Financial
+    - neo4j
+    - Together.ai
+
+linkedin:
+  # Watched input location (relative to the data dir). Bright writes items here on
+  # Sam's request. The server never reads LinkedIn on its own.
+  inbox: inbox/linkedin
+
+drafting:
+  tone: "neutral, sharp, specific; plain declarative sentences"
+  voice_samples: []          # approved/edited comments land here; profile reviewed after two weeks
+  dos:
+    - reference the specific source, number, or claim
+    - short, declarative, no hedging
+    - one idea per comment
+  donts:
+    - no hype words (game-changing, revolutionary, mind-blowing)
+    - no hashtag stacks or emoji
+    - no unsolicited financial advice
+
+post_ideas:
+  per_channel: 4             # 3-5 per channel
+  channels: [x, linkedin, reddit]
+
+rank:
+  min_topics: 5
+  max_topics: 8
+
+cost:
+  per_run_budget_usd: 0.25   # hard acceptance cap for external API cost per full run
+
+delivery:
+  email_to: samjookim@gmail.com
+  email_subject_prefix: "[Feed Digest]"
+
+retention_days: 30
+
+niches:
+  - id: ai-core
+    label: Core AI
+    weight: 1.5
+    keywords: [AI, LLM, GPT, Grok, Claude, Gemini, open model, open-weights, frontier model,
+               dev tools, coding agent, copilot, fine-tune, inference, benchmark,
+               context window, RAG, agent, foundation model, eval]
+  - id: ai-business
+    label: AI in business functions
+    weight: 1.0
+    keywords: [AI productivity, productivity tool, finance team, marketing automation,
+               workflow automation, enterprise AI, ops, rollout, back office]
+  - id: sports
+    label: Sports
+    weight: 1.0
+    keywords: [49ers, NFL, football, La Liga, soccer, footballer, Korean,
+               Champions League, NBA, MLB, transfer, quarterback]
+  - id: asian-economics
+    label: Asian economics
+    weight: 1.0
+    keywords: [Korea, Korean, Japan, Japanese, China, Chinese, won, yen, yuan,
+               Bank of Korea, BOJ, PBOC, semiconductor, export, tariff]
+  - id: markets
+    label: Software, tech and venture markets
+    weight: 1.0
+    keywords: [SaaS, valuation, venture, secondaries, funding, Series A, Series B, Series C,
+               IPO, acquisition, M&A, ARR, private markets, software market]

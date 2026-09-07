@@ -1,0 +1,17 @@
+# Secrets never enter the repo
+.env
+.env.*
+!.env.example
+
+# Runtime state, digests, pages, watched LinkedIn inbox
+data/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
