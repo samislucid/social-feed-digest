@@ -52,23 +52,39 @@ Fill in:
 | `SMTP_HOST` | `smtp.resend.com` |
 | `SMTP_PORT` | `587` |
 | `SMTP_USER` | `resend` |
-| `SMTP_PASSWORD` | Resend **API key** (`re_...`) - used as the SMTP password |
+| `RESEND_API_KEY_HERMES_SOCIAL` | Resend **API key** (`re_...`) - used as the SMTP password |
 | `SMTP_FROM` | `onboarding@resend.dev` (see below) |
 
 ### Email via Resend (primary path)
 
 The worker sends over standard SMTP, and Resend's SMTP bridge is
 `smtp.resend.com`, port `587` (STARTTLS; `465` SSL also works), username
-`resend`, password = your Resend API key (verified against
-resend.com/docs/send-with-smtp, September 2026).
+`resend`, password = the API key in `RESEND_API_KEY_HERMES_SOCIAL` (verified
+against resend.com/docs/send-with-smtp, September 2026). The worker reads that
+variable as the SMTP password; `SMTP_PASSWORD` remains a generic override for
+any non-Resend transport.
 
-**No-domain constraint:** without a verified sending domain, Resend delivers only
-to the Resend account owner's own address, and the from-address must be the
-onboarding sender (`onboarding@resend.dev`). Because the digest targets
-`samjookim@gmail.com`, the zero-DNS path works when Sam's Resend account email is
-`samjookim@gmail.com`: set `SMTP_FROM=onboarding@resend.dev`, send the first test
-to himself, done. **Optional upgrade:** verify a domain in Resend (DNS records in
-their dashboard) for a custom from-address like `digest@sam's-domain`.
+**No-domain constraint (live-verified 2026-09-07):** without a verified sending
+domain, Resend delivers only to the Resend account owner's own address, and the
+from-address must be the onboarding sender (`onboarding@resend.dev`). Sam's
+Resend account email is `samislucid98@gmail.com`, so the zero-DNS path currently
+reaches only that inbox; sending to `samjookim@gmail.com` is rejected:
+
+```
+550 You can only send testing emails to your own email address
+(samislucid98@gmail.com). To send emails to other recipients, please verify a
+domain at resend.com/domains, and change the `from` address to an email using
+this domain.
+```
+
+To deliver to `samjookim@gmail.com`, do one of:
+1. Verify a domain in Resend (DNS records in their dashboard), then set
+   `SMTP_FROM` to an address on that domain. Recommended; also unlocks a proper
+   From identity.
+2. Change the Resend account email to `samjookim@gmail.com`, keeping
+   `SMTP_FROM=onboarding@resend.dev` (zero DNS, but the account inbox changes).
+3. Accept delivery to `samislucid98@gmail.com` temporarily by pointing
+   `DIGEST_EMAIL_TO` there.
 
 Volume is 2 sends/day, comfortably inside Resend's free tier - check the current
 limits at <https://resend.com/pricing> rather than relying on a number here.
@@ -83,6 +99,18 @@ cd /opt/social-feed-digest
 set -a; source .env; set +a
 .venv/bin/python -m digest run --dry-run
 ```
+
+Deploy-time email verification (no re-collection, no xAI spend): send the latest
+existing digest artifact through the bridge and expect Resend's queued response:
+
+```bash
+.venv/bin/python -m digest send
+# expect: email sent to samjookim@gmail.com: 250 ... Ok: queued ...
+```
+
+If Resend rejects the send, the error prints verbatim; with the onboarding
+sender the usual cause is a recipient that is not the Resend account owner's
+address.
 
 Expect: three `collected ... items from r/...` lines, one `x_trends` and one
 `web_sweep` call, `8/8 topics` (or 5-8), `dry run: email not sent (digest.eml
@@ -192,6 +220,7 @@ older than `retention_days` (default 30), meeting the 30-day retention floor.
 
 - [ ] `systemctl list-timers digest.timer` shows two upcoming triggers.
 - [ ] `ls data/digests` shows a dated run dir twice a day; `digest.md/html/json/eml` present.
+- [ ] `python -m digest send` re-sends the latest digest and prints Resend's queued response.
 - [ ] Email arrives at samjookim@gmail.com; `From: onboarding@resend.dev` until a domain is verified.
 - [ ] Private page 200 with token, 404 without; `journalctl -u digest-page` clean.
 - [ ] Run log shows `est. external cost` under $0.25 and no `WARNING` lines.

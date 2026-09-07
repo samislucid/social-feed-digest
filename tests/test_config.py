@@ -49,6 +49,16 @@ def test_empty_subreddits_raises(tmp_path, base_profile):
         load_profile(path)
 
 
+def test_resend_key_used_as_smtp_password():
+    s = Settings.from_env(env={"RESEND_API_KEY_HERMES_SOCIAL": "re_test_key"})
+    assert s.smtp_password == "re_test_key"
+
+
+def test_smtp_password_overrides_resend_key():
+    s = Settings.from_env(env={"RESEND_API_KEY_HERMES_SOCIAL": "re_test_key", "SMTP_PASSWORD": "generic"})
+    assert s.smtp_password == "generic"
+
+
 def test_settings_from_env_defaults(settings):
     assert settings.xai_api_key is None
     assert settings.xai_model == "grok-4.6"

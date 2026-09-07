@@ -97,7 +97,9 @@ class Settings:
             smtp_host=get("SMTP_HOST"),
             smtp_port=int(get("SMTP_PORT", "587")),
             smtp_user=get("SMTP_USER"),
-            smtp_password=get("SMTP_PASSWORD"),
+            # Resend bridge: Sam's RESEND_API_KEY_HERMES_SOCIAL is the SMTP password.
+            # SMTP_PASSWORD stays the generic override for any other transport.
+            smtp_password=get("SMTP_PASSWORD") or get("RESEND_API_KEY_HERMES_SOCIAL"),
             smtp_from=get("SMTP_FROM") or get("SMTP_USER"),
             email_to_override=get("DIGEST_EMAIL_TO"),
             disable_claude=get("DIGEST_DISABLE_CLAUDE", "") in ("1", "true", "yes"),

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
 
-from digest.deliver import prune, run_tag_for, store_digest
+import pytest
+
+from digest import deliver
+from digest.deliver import prune, run_tag_for, send_email, store_digest
 from digest.items import Item
 from digest.rank import build_topics
 from digest.render import Digest, build_email, render_html, render_markdown
@@ -45,6 +49,77 @@ def test_store_digest_writes_all_artifacts(base_profile, settings):
     assert (pages / "latest.html").read_text(encoding="utf-8") == html
     assert (pages / f"{digest.run_tag}.html").exists()
     assert digest.run_tag in (pages / "index.html").read_text(encoding="utf-8")
+
+
+class _FakeSMTP:
+    """Records the SMTP dialogue; data() replays a scripted (code, response)."""
+
+    last_instance: "_FakeSMTP | None" = None
+    data_response: tuple = (250, "Ok: queued as abc123")
+
+    def __init__(self, host, port, timeout=None, context=None):
+        self.host, self.port = host, port
+        self.calls: list[tuple] = []
+        _FakeSMTP.last_instance = self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def ehlo(self):
+        pass
+
+    def starttls(self, context=None):
+        self.calls.append(("starttls",))
+
+    def login(self, user, password):
+        self.calls.append(("login", user, password))
+
+    def mail(self, from_addr):
+        self.calls.append(("mail", from_addr))
+        return 250, "ok"
+
+    def rcpt(self, rcpt):
+        self.calls.append(("rcpt", rcpt))
+        return 250, "ok"
+
+    def data(self, payload):
+        self.calls.append(("data", len(payload)))
+        return _FakeSMTP.data_response
+
+
+def _email_message() -> EmailMessage:
+    msg = EmailMessage()
+    msg["From"] = "onboarding@resend.dev"
+    msg["To"] = "samjookim@gmail.com"
+    msg["Subject"] = "test digest"
+    msg.set_content("body")
+    return msg
+
+
+def test_send_email_reports_server_acceptance(monkeypatch, settings):
+    monkeypatch.setattr(deliver.smtplib, "SMTP", _FakeSMTP)
+    settings.smtp_host, settings.smtp_port = "smtp.resend.com", 587
+    settings.smtp_user, settings.smtp_password = "resend", "re_test"
+    lines: list[str] = []
+    status = send_email(_email_message(), settings, dry_run=False, log=lines.append)
+    assert status.startswith("sent")
+    assert any("Ok: queued as abc123" in line for line in lines)
+    smtp = _FakeSMTP.last_instance
+    assert ("login", "resend", "re_test") in smtp.calls
+    assert ("mail", "onboarding@resend.dev") in smtp.calls
+    assert ("rcpt", "samjookim@gmail.com") in smtp.calls
+
+
+def test_send_email_raises_verbatim_on_rejection(monkeypatch, settings):
+    _FakeSMTP.data_response = (551, b"You can only send testing emails to your own email address")
+    monkeypatch.setattr(deliver.smtplib, "SMTP", _FakeSMTP)
+    settings.smtp_host, settings.smtp_port = "smtp.resend.com", 587
+    settings.smtp_user, settings.smtp_password = "resend", "re_test"
+    with pytest.raises(smtplib.SMTPDataError, match="testing emails"):
+        send_email(_email_message(), settings, dry_run=False, log=lambda _m: None)
 
 
 def test_prune_removes_old_runs_but_keeps_recent(base_profile, settings):

@@ -236,6 +236,51 @@ def cmd_prune(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_send(args) -> int:
+    """Re-send an existing digest .eml through the configured SMTP bridge.
+
+    No collection, no xAI spend: this is the deploy-time email verification
+    step and a free replay of any past digest.
+    """
+    import smtplib
+    from email import policy as email_policy
+    from email.parser import BytesParser
+
+    settings = Settings.from_env()
+    if not settings.smtp_host:
+        _log("SMTP_HOST not set; nothing to send (see RUNBOOK.md, email via Resend)")
+        return 2
+    runs_dir = Path(settings.data_dir) / "digests"
+    tag = args.run_tag
+    if not tag:
+        candidates = sorted((p.name for p in runs_dir.iterdir() if p.is_dir()), reverse=True) if runs_dir.exists() else []
+        if not candidates:
+            _log(f"no digest runs under {runs_dir}; run `python -m digest run` first")
+            return 2
+        tag = candidates[0]
+        _log(f"no --run-tag given; using latest run: {tag}")
+    eml_path = runs_dir / tag / "digest.eml"
+    if not eml_path.exists():
+        _log(f"digest.eml not found: {eml_path}")
+        return 2
+
+    message = BytesParser(policy=email_policy.default).parsebytes(eml_path.read_bytes())
+    if settings.smtp_from and str(message.get("From", "")) != settings.smtp_from:
+        del message["From"]
+        message["From"] = settings.smtp_from
+        _log(f"From set to {settings.smtp_from} (from current SMTP_FROM, overriding artifact)")
+    try:
+        status = send_email(message, settings, dry_run=False, log=_log)
+    except smtplib.SMTPException as exc:
+        _log(f"send failed: {exc}")
+        return 1
+    except OSError as exc:
+        _log(f"send failed: {exc}")
+        return 1
+    _log(f"send result: {status}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="digest", description="Social feed digest worker")
     subs = parser.add_subparsers(dest="command", required=True)
@@ -254,8 +299,13 @@ def main(argv: list[str] | None = None) -> int:
     prune_p = subs.add_parser("prune", help="delete digest artifacts older than retention_days")
     prune_p.add_argument("--profile", default="profile.yaml")
 
+    send_p = subs.add_parser(
+        "send", help="re-send an existing digest .eml via the SMTP bridge (no re-collection)"
+    )
+    send_p.add_argument("--run-tag", default=None, help="digest run tag; defaults to the latest")
+
     args = parser.parse_args(argv)
-    handlers = {"run": cmd_run, "serve": cmd_serve, "prune": cmd_prune}
+    handlers = {"run": cmd_run, "serve": cmd_serve, "prune": cmd_prune, "send": cmd_send}
     try:
         return handlers[args.command](args)
     except ConfigError as exc:

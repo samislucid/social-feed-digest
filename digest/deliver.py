@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import shutil
 import smtplib
+import ssl
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -127,17 +128,57 @@ def _parse_tag(tag: str) -> datetime | None:
 
 
 def send_email(message: EmailMessage, settings: Settings, dry_run: bool, log=print) -> str:
-    """Send via SMTP unless dry_run; dry runs verify rendering and keep the .eml."""
+    """Send via SMTP unless dry_run; dry runs verify rendering and keep the .eml.
+
+    The SMTP server's final DATA response is logged verbatim (Resend's bridge
+    returns its queued line there, which is the acceptance proof for a send).
+    """
     if dry_run:
         log("dry run: email not sent (digest.eml written with the run artifacts)")
         return "skipped-dry-run"
     if not settings.smtp_host:
         log("SMTP_HOST not set: email not sent (digest.eml written with the run artifacts)")
         return "skipped-no-smtp"
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=60) as server:
-        server.starttls()
+
+    try:
+        from email import policy as email_policy
+
+        payload = message.as_bytes(policy=email_policy.SMTP)  # CRLF wire format
+    except Exception:  # pragma: no cover - older message objects
+        payload = message.as_bytes()
+
+    if settings.smtp_port == 465:
+        server: smtplib.SMTP = smtplib.SMTP_SSL(
+            settings.smtp_host, settings.smtp_port, timeout=60, context=ssl.create_default_context()
+        )
+    else:
+        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=60)
+
+    with server:
+        server.ehlo()
+        if settings.smtp_port != 465:
+            server.starttls(context=ssl.create_default_context())
+            server.ehlo()
         if settings.smtp_user:
-            server.login(settings.smtp_user or "", settings.smtp_password or "")
-        server.send_message(message)
-    log(f"email sent to {message['To']}")
-    return "sent"
+            server.login(settings.smtp_user, settings.smtp_password or "")
+        from_addr = str(message["From"])
+        rcpt = str(message["To"])
+        code, resp = server.mail(from_addr)
+        if code >= 400:
+            raise smtplib.SMTPSenderRefused(code, resp, from_addr)
+        code, resp = server.rcpt(rcpt)
+        if code >= 400:
+            raise smtplib.SMTPRecipientsRefused({rcpt: (code, resp)})
+        data_result = server.data(payload)
+        # Python 3.11 smtplib returns (code, msg); be tolerant of a bare response.
+        if isinstance(data_result, tuple):
+            data_code, raw = int(data_result[0]), data_result[1]
+        else:
+            data_code, raw = 250, data_result
+        data_resp = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw)
+        if data_code != 250:
+            # Rejections surface verbatim (e.g. Resend's testing-sender constraint).
+            raise smtplib.SMTPDataError(data_code, data_resp)
+    status = f"sent (server: {data_resp})"
+    log(f"email sent to {rcpt}: {data_resp}")
+    return status
