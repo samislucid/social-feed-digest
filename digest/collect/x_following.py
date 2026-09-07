@@ -136,7 +136,7 @@ def sync(
                 return handles, {}
             break
 
-        params: dict = {"max_results": page_size, "user_fields": "username"}
+        params: dict = {"max_results": page_size, "user.fields": "username"}
         if token:
             params["pagination_token"] = token
         try:

@@ -195,3 +195,17 @@ def test_missing_optional_dependency_raises(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "requests_oauthlib", None)
     with pytest.raises(x_following.XFollowingError, match="requests-oauthlib"):
         sync(s, 0.25)
+
+def test_sync_uses_dotted_v2_field_param(tmp_path, monkeypatch):
+    """X API v2 expects dotted query params (user.fields); underscore names get HTTP 400."""
+    s = _settings(tmp_path)
+    seen_params = []
+
+    def fake_get(url, auth=None, params=None, timeout=None):
+        seen_params.append(dict(params or {}))
+        return _Resp(_page(["a"]))
+
+    monkeypatch.setattr(x_following.requests, "get", fake_get)
+    sync(s, 0.25)
+    assert seen_params[0].get("user.fields") == "username"
+    assert "user_fields" not in seen_params[0]
