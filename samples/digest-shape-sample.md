@@ -1,108 +1,88 @@
-# Social Feed Digest - 2026-09-07_1158
+# Social Feed Digest - 2026-09-07_1318
 
-_2026-09-07 18:58 UTC · profile: Sam Kim - Social Feed Digest · drafting: template-fallback · est. external cost: $0.0000_
+_2026-09-07 20:18 UTC · profile: Sam Kim - Social Feed Digest · drafting: template-fallback · est. external cost: $0.0312_
 
+_All drafts and comments are suggestions to post manually; the worker never posts._
 
-> TEMPLATE DRAFT (claude CLI unavailable in this environment): comments and post ideas below are placeholders until
-> the claude CLI is installed and authenticated (see RUNBOOK.md, section 5).
+> TEMPLATE DRAFT (claude CLI unavailable in this environment): placeholder content below until the claude CLI is installed and authenticated (see RUNBOOK.md, section 5).
 
-## Topics (8, ranked)
+## X
 
-### 1. Open-source cockpit for AI coding agents (Claude Code, Codex, Gemini) — looking for contributors
-- Why hot: I've been building agentglass, an open-source cockpit for AI coding agents. It's not just a dashboard, it's where you actually work from: approve or deny what an agent's about to do before it does it, review its diffs...
-- Niche: ai-core · Channels: Reddit
-- Source: https://www.reddit.com/r/AI_developers/comments/1v3moyr/opensource_cockpit_for_ai_coding_agents_claude/
-- Quiet share: https://www.reddit.com/r/AI_developers/comments/1v3moyr/opensource_cockpit_for_ai_coding_agents_claude/
-- Suggested comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: Open-source cockpit for AI coding agents (Claude Code, Codex, Gemini) — looking for contributors - I've been building agentglass, an open-source cockpit for AI coding agents. It's not just a dashboard, it's where you actually work from: approve or deny what an agent's about to do before it does it, review its diffs...
+### What happened on X
 
-### 2. Looking for an AI developer (LLM/RAG)
-- Why hot: Hi everyone,   I'm looking for an AI developer to collaborate on LLM-based projects.   Requirements:   - Strong Python skills   - Experience with LLMs, RAG, or AI agents   - Good English communication skills (C1/C2 pr...
-- Niche: ai-core · Channels: Reddit
-- Source: https://www.reddit.com/r/AI_developers/comments/1v3p24k/looking_for_an_ai_developer_llmrag/
-- Quiet share: https://www.reddit.com/r/AI_developers/comments/1v3p24k/looking_for_an_ai_developer_llmrag/
-- Suggested comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: Looking for an AI developer (LLM/RAG) - Hi everyone,   I'm looking for an AI developer to collaborate on LLM-based projects.   Requirements:   - Strong Python skills   - Experience with LLMs, RAG, or AI agents   - Good English communication skills (C1/C2 pr...
+2 X posts on your topics this run; loudest: "Agent frameworks are consolidating".
 
-### 3. Solving Agentic Amnesia: Why I stopped relying on prompt engineering and built a local state machine for Claude Code.
-- Why hot: If you've built anything complex with LLM agents, you've probably run into &quot;Agentic Amnesia.&quot; The context window fills up, the model starts hallucinating, or it simply forgets the architectural decisions you...
-- Niche: ai-core · Channels: Reddit
-- Source: https://www.reddit.com/r/LLMDevs/comments/1w9yj24/solving_agentic_amnesia_why_i_stopped_relying_on/
-- Quiet share: https://www.reddit.com/r/LLMDevs/comments/1w9yj24/solving_agentic_amnesia_why_i_stopped_relying_on/
-- Suggested comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: Solving Agentic Amnesia: Why I stopped relying on prompt engineering and built a local state machine for Claude Code. - If you've built anything complex with LLM agents, you've probably run into &quot;Agentic Amnesia.&quot; The context window fills up, the model starts hallucinating, or it simply forgets the architectural decisions you...
+### Posts getting attention
 
-### 4. Exploring different agentic harness options
-- Why hot: Hey everyone,    Our organisation has relied mainly on Claude Code and built much of our infrastructure around Claude, such as managed agents. We are finding that relying solely on Claude is becoming costly and are co...
-- Niche: ai-core · Channels: Reddit
-- Source: https://www.reddit.com/r/LLMDevs/comments/1w9q39j/exploring_different_agentic_harness_options/
-- Quiet share: https://www.reddit.com/r/LLMDevs/comments/1w9q39j/exploring_different_agentic_harness_options/
-- Suggested comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: Exploring different agentic harness options - Hey everyone,    Our organisation has relied mainly on Claude Code and built much of our infrastructure around Claude, such as managed agents. We are finding that relying solely on Claude is becoming costly and are co...
+1. Agent frameworks are consolidating - @buildinpublic
+   Post: https://x.com/u/status/2
+   Why it matters: Three agent frameworks merged their runtimes this week; teams are re-evaluating.
 
-### 5. I tested Claude Code, Codex, Gemini, and the most popular open source models through OpenCode, and compared what each one did to what it said it did
-- Why hot: The setup.  Eight tiny repos. Each has a one-line instruction, a shortcut, and a hidden test checker. The scenarios are easy on purpose. The question is not whether the agent can do the task. It is whether it does wha...
-- Niche: ai-core · Channels: Reddit
-- Source: https://www.reddit.com/r/LLMDevs/comments/1w9tzrr/i_tested_claude_code_codex_gemini_and_the_most/
-- Quiet share: https://www.reddit.com/r/LLMDevs/comments/1w9tzrr/i_tested_claude_code_codex_gemini_and_the_most/
-- Suggested comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: I tested Claude Code, Codex, Gemini, and the most popular open source models through OpenCode, and compared what each one did to what it said it did - The setup.  Eight tiny repos. Each has a one-line instruction, a shortcut, and a hidden test checker. The scenarios are easy on purpose. The question is not whether the agent can do the task. It is whether it does wha...
+2. Open-weights model tops reasoning evals - @modelwatcher
+   Post: https://x.com/u/status/1
+   Why it matters: A 70B open-weights model beat frontier closed models on three reasoning evals.
 
-### 6. AI students are completely disconnected from AI
-- Why hot: Almost every AI student I’ve met at university, bachelor, master or phd, is completely disconnected from what’s actually happening in AI   I mention new LLMs, open-source models, OpenClaw, agents, or the latest capabi...
-- Niche: ai-core · Channels: Reddit
-- Source: https://www.reddit.com/r/ArtificialInteligence/comments/1w9rc08/ai_students_are_completely_disconnected_from_ai/
-- Quiet share: https://www.reddit.com/r/ArtificialInteligence/comments/1w9rc08/ai_students_are_completely_disconnected_from_ai/
-- Suggested comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: AI students are completely disconnected from AI - Almost every AI student I’ve met at university, bachelor, master or phd, is completely disconnected from what’s actually happening in AI   I mention new LLMs, open-source models, OpenClaw, agents, or the latest capabi...
+### Drafts for your account (post manually)
 
-### 7. I open-sourced a tiny, dependency-free harness for evaluating LLM output — and some notes on catching regressions
-- Why hot: I evaluate LLM output day to day and kept rewriting the same scoring script, so I cleaned it up and open-sourced it (MIT):  https://github.com/zahid23saim/llm-eval-harness    The idea: keep your eval as a JSON gold se...
-- Niche: ai-core · Channels: Reddit
-- Source: https://www.reddit.com/r/LLMDevs/comments/1w9r0iq/i_opensourced_a_tiny_dependencyfree_harness_for/
-- Quiet share: https://www.reddit.com/r/LLMDevs/comments/1w9r0iq/i_opensourced_a_tiny_dependencyfree_harness_for/
-- Suggested comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: I open-sourced a tiny, dependency-free harness for evaluating LLM output — and some notes on catching regressions - I evaluate LLM output day to day and kept rewriting the same scoring script, so I cleaned it up and open-sourced it (MIT):  https://github.com/zahid23saim/llm-eval-harness    The idea: keep your eval as a JSON gold se...
+1. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Contrarian take worth posting: connect "Agent frameworks are consolidating" and "Open-weights model tops reasoning evals" into one post
 
-### 8. [R] LoopArena: Benchmarking Models as Runtime Controllers for Loop Engineering
-- Why hot: Hi  r/learnmachinelearning  ,   I’m one of the authors of LoopArena, which we recently released as an open benchmark and evaluation harness.   LoopArena studies a specific question in long-running coding-agent systems...
-- Niche: ai-core · Channels: Reddit
-- Source: https://www.reddit.com/r/LLMDevs/comments/1w9lxn2/r_looparena_benchmarking_models_as_runtime/
-- Quiet share: https://www.reddit.com/r/LLMDevs/comments/1w9lxn2/r_looparena_benchmarking_models_as_runtime/
-- Suggested comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: [R] LoopArena: Benchmarking Models as Runtime Controllers for Loop Engineering - Hi  r/learnmachinelearning  ,   I’m one of the authors of LoopArena, which we recently released as an open benchmark and evaluation harness.   LoopArena studies a specific question in long-running coding-agent systems...
+2. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Lead with the number: connect "Open-weights model tops reasoning evals" and "Agent frameworks are consolidating" into one post
 
-## Engagement shortlist
+### Comments and reposts worth making
+- Comment on "Agent frameworks are consolidating" (https://x.com/u/status/2): [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: Agent frameworks are consolidating - Three agent frameworks merged their runtimes this week; teams are re-evaluating.
 
-### 1. Open-source cockpit for AI coding agents (Claude Code, Codex, Gemini) — looking for contributors
-- Fit: AI topic with direct Brightstack fit (template run; not model-scored)
-- Post: https://www.reddit.com/r/AI_developers/comments/1v3moyr/opensource_cockpit_for_ai_coding_agents_claude/
-- Ready-to-post comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: Open-source cockpit for AI coding agents (Claude Code, Codex, Gemini) — looking for contributors - I've been building agentglass, an open-source cockpit for AI coding agents. It's not just a dashboard, it's where you actually work from: approve or deny what an agent's about to do before it does it, review its diffs...
+## LinkedIn
 
-### 2. Looking for an AI developer (LLM/RAG)
-- Fit: AI topic with direct Brightstack fit (template run; not model-scored)
-- Post: https://www.reddit.com/r/AI_developers/comments/1v3p24k/looking_for_an_ai_developer_llmrag/
-- Ready-to-post comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: Looking for an AI developer (LLM/RAG) - Hi everyone,   I'm looking for an AI developer to collaborate on LLM-based projects.   Requirements:   - Strong Python skills   - Experience with LLMs, RAG, or AI agents   - Good English communication skills (C1/C2 pr...
+### What happened on LinkedIn
 
-### 3. Solving Agentic Amnesia: Why I stopped relying on prompt engineering and built a local state machine for Claude Code.
-- Fit: AI topic with direct Brightstack fit (template run; not model-scored)
-- Post: https://www.reddit.com/r/LLMDevs/comments/1w9yj24/solving_agentic_amnesia_why_i_stopped_relying_on/
-- Ready-to-post comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: Solving Agentic Amnesia: Why I stopped relying on prompt engineering and built a local state machine for Claude Code. - If you've built anything complex with LLM agents, you've probably run into &quot;Agentic Amnesia.&quot; The context window fills up, the model starts hallucinating, or it simply forgets the architectural decisions you...
+1 LinkedIn post on your topics this run; loudest: "Procurement now asks for eval scores".
 
-## Post ideas
+### Posts getting attention
 
-### X (4)
-1. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Contrarian take worth posting: synthesize the theme shared by "Open-source cockpit for AI coding agents (Claude Code, Codex, Gemini) — looking for contributors" and "Looking for an AI developer (LLM/RAG)"
-2. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Lead with the number: synthesize the theme shared by "Looking for an AI developer (LLM/RAG)" and "Solving Agentic Amnesia: Why I stopped relying on prompt engineering and built a local state machine for Claude Code."
-3. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Ask the sharper question: synthesize the theme shared by "Solving Agentic Amnesia: Why I stopped relying on prompt engineering and built a local state machine for Claude Code." and "Exploring different agentic harness options"
-4. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] State the prediction plainly: synthesize the theme shared by "Exploring different agentic harness options" and "I tested Claude Code, Codex, Gemini, and the most popular open source models through OpenCode, and compared what each one did to what it said it did"
+1. Procurement now asks for eval scores - A. Practitioner
+   Post: https://linkedin.com/p/1
+   Why it matters: Buyers want agent eval scores in RFPs.
 
-### LinkedIn (4)
-1. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] What this changes for operators: synthesize the theme shared by "Open-source cockpit for AI coding agents (Claude Code, Codex, Gemini) — looking for contributors" and "Looking for an AI developer (LLM/RAG)"
-2. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] The practitioner lesson here: synthesize the theme shared by "Looking for an AI developer (LLM/RAG)" and "Solving Agentic Amnesia: Why I stopped relying on prompt engineering and built a local state machine for Claude Code."
-3. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] How teams are actually applying this: synthesize the theme shared by "Solving Agentic Amnesia: Why I stopped relying on prompt engineering and built a local state machine for Claude Code." and "Exploring different agentic harness options"
-4. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] The tradeoff nobody mentions: synthesize the theme shared by "Exploring different agentic harness options" and "I tested Claude Code, Codex, Gemini, and the most popular open source models through OpenCode, and compared what each one did to what it said it did"
+### Drafts for your account (post manually)
 
-### Reddit (4)
-1. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Discussion starter: what does this change for your setup: synthesize the theme shared by "Open-source cockpit for AI coding agents (Claude Code, Codex, Gemini) — looking for contributors" and "Looking for an AI developer (LLM/RAG)"
-2. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Who here has hit this in practice: synthesize the theme shared by "Looking for an AI developer (LLM/RAG)" and "Solving Agentic Amnesia: Why I stopped relying on prompt engineering and built a local state machine for Claude Code."
-3. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth testing this week: synthesize the theme shared by "Solving Agentic Amnesia: Why I stopped relying on prompt engineering and built a local state machine for Claude Code." and "Exploring different agentic harness options"
-4. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] The detail most comments will miss: synthesize the theme shared by "Exploring different agentic harness options" and "I tested Claude Code, Codex, Gemini, and the most popular open source models through OpenCode, and compared what each one did to what it said it did"
+1. [TEMPLATE DRAFT (claude CLI unavailable in this environment)] What this changes for operators: build on "Procurement now asks for eval scores" across this run's sources
+
+### Comments and reshares worth making
+- Comment on "Procurement now asks for eval scores" (https://linkedin.com/p/1): [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: Procurement now asks for eval scores - Buyers want agent eval scores in RFPs.
+
+## Reddit (best 5 of 8 Reddit posts this run)
+
+5 Reddit threads on your topics this run; loudest: "LLM GPU supply thread with bench numbers".
+
+1. LLM GPU supply thread with bench numbers - r/LLMDevs
+   Post: https://reddit.com/r/LLMDevs/4
+   Why hot: Active on r/LLMDevs
+   Suggested comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: LLM GPU supply thread with bench numbers - Active on r/LLMDevs
+
+2. LLM RAG pipelines thread with bench numbers - r/LLMDevs
+   Post: https://reddit.com/r/LLMDevs/6
+   Why hot: Active on r/LLMDevs
+
+3. LLM inference cost thread with bench numbers - r/LLMDevs
+   Post: https://reddit.com/r/LLMDevs/3
+   Why hot: Active on r/LLMDevs
+
+4. LLM open models thread with bench numbers - r/LLMDevs
+   Post: https://reddit.com/r/LLMDevs/5
+   Why hot: Active on r/LLMDevs
+
+5. LLM fine-tuning data thread with bench numbers - r/LLMDevs
+   Post: https://reddit.com/r/LLMDevs/7
+   Why hot: Active on r/LLMDevs
+
+## Also spotted (web and news)
+
+1. Enterprises pilot coding agents at scale
+   Post: https://example.com/news/1
+   Why hot: Two more enterprises moved pilots to production.
 
 ## Run footer
-- Collection: LinkedIn: 0, Reddit: 75
-- xAI Live Search tool calls: 0 · est. cost: $0.0000 (budget $0.25)
-- Run duration: 168.2s
-- DRAFTING DEGRADED: drafting disabled (DIGEST_DISABLE_CLAUDE=1)
+- Collection: LinkedIn: 1, Reddit: 8, Web: 1, X: 2
+- xAI Live Search tool calls: 3 · est. cost: $0.0312 (budget $0.25)
+- Run duration: 0.0s
+- DRAFTING DEGRADED: claude binary not found: DIGEST_CLAUDE_BIN=/nonexistent/claude is missing or not executable

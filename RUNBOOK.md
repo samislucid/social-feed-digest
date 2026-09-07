@@ -10,6 +10,25 @@ systemd timer (07:30 & 17:30 local) ─> digest run ─> data/digests/<tag>/ + d
                                                  └─> private page (token required)
 ```
 
+Digest shape (2026-09-07 reshape, channel-first and action-first): the email
+reads by channel, not by a ranked cross-channel topic list.
+
+- **X** - summary of X activity on the profile topics, a few specific tweets
+  getting attention (real links, author, why it matters), 2-3 ready-to-post
+  tweet drafts, recommended comments/reposts.
+- **LinkedIn** - mirrors X: activity summary, notable posts, ready-to-post
+  drafts, recommended comments/reshares. Empty watched-inbox runs show a
+  visible note instead of an empty section.
+- **Reddit (best N of M)** - capped at `reddit.max_digest_posts` (default 5)
+  best-ranked posts, each with a ready-to-paste thread comment.
+- **Also spotted (web and news)** - compact context list (portfolio sweeps land
+  here).
+
+Every draft and comment is a suggestion Sam posts manually; the worker never
+posts anywhere. A run whose claude drafting failed says so in the email subject
+(`[DEGRADED: template drafts]`) and names the exact reason in the run footer
+(`DRAFTING DEGRADED: ...`). Full example: `samples/digest-shape-sample.md`.
+
 ## 1. Prerequisites
 
 - Ubuntu 22.04/24.04 VPS with Python 3.10+ (`python3 --version`) and git.
@@ -108,9 +127,11 @@ sender the usual cause is a recipient that is not the Resend account owner's
 address.
 
 Expect: three `collected ... items from r/...` lines, one `x_trends` and one
-`web_sweep` call, `8/8 topics` (or 5-8), `dry run: email not sent (digest.eml
-written...)`, and artifacts in `data/digests/<date_time>/`. Cost prints at the
-end; the hard cap is `$0.25` (`cost.per_run_budget_usd` in `profile.yaml`).
+`web_sweep` call, `done: N/M topics -> K sections` (K = 3 required channel
+sections plus web context when it has content), `dry run: email not sent
+(digest.eml written...)`, and artifacts in `data/digests/<date_time>/`. Cost
+prints at the end; the hard cap is `$0.25` (`cost.per_run_budget_usd` in
+`profile.yaml`).
 
 To verify email rendering + sending once: `python -m digest run` (no `--dry-run`)
 sends the digest to the delivery address - this is the deploy-time email check.
@@ -133,7 +154,7 @@ If the service's PATH cannot see the binary, point the worker straight at it via
 echo "DIGEST_CLAUDE_BIN=$(sudo -u "$(systemctl show -p User --value digest.service)" bash -lc 'command -v claude' 2>/dev/null)" | sudo tee -a /opt/social-feed-digest/.env
 ```
 
-Until the CLI is present the run still completes: comments and post ideas are
+Until the CLI is present the run still completes: drafts and comments are
 clearly marked `TEMPLATE DRAFT`, the email subject is tagged
 `[DEGRADED: template drafts]`, the run footer names the exact claude failure
 reason (`DRAFTING DEGRADED: ...`), and the digest header records
@@ -209,7 +230,7 @@ journalctl -u digest.service -f    # expect: drafts via claude -p: N comments ..
 Wait for the run to finish: `--no-block` only makes `systemctl start` return
 immediately, and Ctrl-C exits the log tail without stopping the run. The run
 takes 2-5 minutes (claude drafting included) and is done when the log prints
-`done: N/M topics ... artifacts in ...`.
+`done: N/M topics -> K sections ... artifacts in ...`.
 
 Pass criteria: the log shows `drafts via claude -p`, no `WARN: claude -p
 unavailable` line; the new email has no `[DEGRADED: template drafts]` subject
@@ -351,6 +372,7 @@ One-time setup:
 
 - [ ] `systemctl list-timers digest.timer` shows two upcoming triggers.
 - [ ] `ls data/digests` shows a dated run dir twice a day; `digest.md/html/json/eml` present.
+- [ ] `digest.md` shows the channel-first sections: X, LinkedIn (or its empty-inbox note), Reddit with the best-N cap, web/news context.
 - [ ] `python -m digest send` re-sends the latest digest and prints Resend's queued response.
 - [ ] Email arrives at samislucid98@gmail.com (the Resend account owner address); `From: onboarding@resend.dev`.
 - [ ] If X API credentials are set: the log shows `X following sync` at most once a week and `data/state/x_following.json` exists.
