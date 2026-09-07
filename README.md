@@ -27,12 +27,16 @@ data/inbox/linkedin/* (Bright-pasted items) ───┘                        
 ```
 
 - **Collect**: xAI Responses API with server-side `x_search` / `web_search` tools
-  (no paid X API). Reddit hot listings via public `.rss` with backoff; the PRAW
-  Data-API source activates automatically when app credentials exist. LinkedIn
-  items arrive as files in the watched inbox - the server never reads LinkedIn.
+  (no paid X API by default). Reddit hot listings via public `.rss` with backoff;
+  the PRAW Data-API source activates automatically when app credentials exist.
+  An optional X API v2 seam (OAuth 1.0a user context, credit-based Owned Reads at
+  $0.001/account) syncs Sam's following list at most weekly and is inactive
+  without credentials. LinkedIn items arrive as files in the watched inbox - the
+  server never reads LinkedIn.
 - **Rank**: deterministic scorer. Profile niche/keyword weights drive relevance;
-  multi-source, cross-channel agreement and recency drive momentum. Same story is
-  merged once and keeps each channel's share target.
+  multi-source, cross-channel agreement and recency drive momentum; topics
+  authored by followed X accounts get a ranking boost when the X API seam is
+  configured. Same story is merged once and keeps each channel's share target.
 - **Draft**: headless `claude -p` matches the voice in `profile.yaml`. Where the
   CLI is unavailable, drafts fall back to placeholders clearly marked
   `TEMPLATE DRAFT` (the digest shows the drafting source).

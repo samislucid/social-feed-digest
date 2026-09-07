@@ -148,17 +148,31 @@ def _run_tool_search(
     return text, citations, _usage_from_response(data)
 
 
-def collect_x_topics(settings: Settings, profile: dict) -> tuple[list[Item], dict]:
-    """Hot topics on X within the profile's niches, each with source post URLs."""
+_X_POST_URL_RE = re.compile(r"https?://(?:www\.)?(?:x|twitter)\.com/([A-Za-z0-9_]{1,20})/status/")
+
+
+def collect_x_topics(
+    settings: Settings, profile: dict, followed_handles: list[str] | None = None
+) -> tuple[list[Item], dict]:
+    """Hot topics on X within the profile's niches, each with source post URLs.
+
+    followed_handles (optional, from the X API v2 seam) are folded into the
+    scout prompt at no extra cost: same single call, same tool budget.
+    """
     if not settings.xai_api_key:
         raise XaiError("XAI_API_KEY is not set; X trend collection is unavailable")
 
     cfg = profile.get("x_search") or {}
     handles = [h for h in (cfg.get("handles") or []) if h]
+    for h in followed_handles or []:
+        if h and h.lower() not in {x.lower() for x in handles}:
+            handles.append(h)
     candidates = int(cfg.get("candidate_topics", 12))
     from_date, to_date = _window(profile)
     handle_note = (
-        " Pay special attention to recent posts from these voices: " + ", ".join(handles) + "."
+        " Pay special attention to recent posts from these voices: "
+        + ", ".join(handles[:40])
+        + (f" (+{len(handles) - 40} more)." if len(handles) > 40 else ".")
         if handles
         else ""
     )
@@ -192,6 +206,10 @@ def collect_x_topics(settings: Settings, profile: dict) -> tuple[list[Item], dic
         if not urls:
             continue
         for url in urls:
+            author = ""
+            match = _X_POST_URL_RE.match(url)
+            if match:
+                author = match.group(1).lower()
             items.append(
                 Item(
                     channel="x",
@@ -200,6 +218,7 @@ def collect_x_topics(settings: Settings, profile: dict) -> tuple[list[Item], dic
                     summary=why,
                     source_label="X (via Live Search)",
                     niche_hint=niche,
+                    extra={"author": author} if author else {},
                 )
             )
     return items, usage

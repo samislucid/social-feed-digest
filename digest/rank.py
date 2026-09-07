@@ -115,7 +115,22 @@ def _group_items(items: list[Item], threshold: float = 0.55) -> list[list[Item]]
     return [g[1] for g in groups]
 
 
-def _score(group: list[Item], niches: list[dict], now: datetime) -> tuple[float, str]:
+FOLLOWED_AUTHOR_BONUS = 2.5  # topic authored by an account Sam follows
+
+
+def _followed_bonus(group: list[Item], followed: frozenset[str] | None) -> float:
+    """Boost when any item in the group is authored by a followed X account."""
+    if not followed:
+        return 0.0
+    for item in group:
+        if _item_author(item).lstrip("@").lower() in followed:
+            return FOLLOWED_AUTHOR_BONUS
+    return 0.0
+
+
+def _score(
+    group: list[Item], niches: list[dict], now: datetime, followed: frozenset[str] | None = None
+) -> tuple[float, str]:
     text = " ".join(i.title + " " + i.summary for i in group)
     scores = niche_scores(text, niches)
     niche, niche_score = max(scores.items(), key=lambda kv: kv[1]) if scores else ("", 0.0)
@@ -135,6 +150,7 @@ def _score(group: list[Item], niches: list[dict], now: datetime) -> tuple[float,
         + (2.0 if len(channels) > 1 else 0.0)  # cross-channel momentum
         + recency_bonus
         + engagement_bonus
+        + _followed_bonus(group, followed)
     )
     return score, niche
 
@@ -151,9 +167,19 @@ def _why_hot(group: list[Item]) -> str:
     return f"Active across {', '.join(channels)}"
 
 
-def build_topics(items: list[Item], profile: dict, now: datetime | None = None) -> list[Topic]:
-    """Merge, score, rank, and clamp to the profile's topic bounds."""
+def build_topics(
+    items: list[Item],
+    profile: dict,
+    now: datetime | None = None,
+    followed_handles: list[str] | None = None,
+) -> list[Topic]:
+    """Merge, score, rank, and clamp to the profile's topic bounds.
+
+    followed_handles (optional, from the X API v2 seam) boost topics whose
+    items are authored by accounts Sam follows.
+    """
     now = now or datetime.now(timezone.utc)
+    followed = frozenset(h.lstrip("@").lower() for h in followed_handles or [])
     niches = profile["niches"]
     rank_cfg = profile.get("rank") or {}
     min_topics = int(rank_cfg.get("min_topics", 5))
@@ -165,7 +191,7 @@ def build_topics(items: list[Item], profile: dict, now: datetime | None = None) 
             group,
             key=lambda i: (i.channel == "x", i.engagement, i.published or datetime.min.replace(tzinfo=timezone.utc)),
         )
-        score, niche = _score(group, niches, now)
+        score, niche = _score(group, niches, now, followed)
         source_url, quiet_share_url = _pick_share_urls(group)
         topics.append(
             Topic(

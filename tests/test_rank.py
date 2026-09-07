@@ -69,6 +69,25 @@ def test_quiet_share_prefers_x_link(base_profile):
     assert topic.source_url == "https://x.com/u/status/1"
 
 
+def test_followed_author_boost_breaks_score_tie(base_profile):
+    # Both topics score 3.0 (one ai-core keyword each); the boost decides order.
+    a = _item("Inference costs drop again", channel="x", url="https://x.com/devA/status/1")
+    a.extra = {"author": "devA"}
+    b = _item("Agents adoption doubles", channel="x", url="https://x.com/devB/status/2")
+    b.extra = {"author": "devB"}
+    unboosted = build_topics([a, b], base_profile)
+    assert unboosted[0].items[0].extra["author"] == "devB"
+    boosted = build_topics([a, b], base_profile, followed_handles=["@DevA"])
+    assert boosted[0].items[0].extra["author"] == "devA"
+
+
+def test_followed_author_ignored_without_seam(base_profile):
+    a = _item("Inference cost drops 90% overnight", channel="x", url="https://x.com/devA/status/1")
+    a.extra = {"author": "devA"}
+    plain = build_topics([a], base_profile)
+    assert build_topics([a], base_profile, followed_handles=[])[0].score == plain[0].score
+
+
 def test_fewer_than_min_topics_still_returns(base_profile):
     items = [_item("Single LLM topic", channel="reddit")]
     topics = build_topics(items, base_profile)

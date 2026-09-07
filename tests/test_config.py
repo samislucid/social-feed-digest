@@ -17,7 +17,7 @@ def test_load_valid_profile(tmp_path, base_profile):
     path = _write(tmp_path, yaml.safe_dump(base_profile))
     loaded = load_profile(path)
     assert loaded["name"] == "test profile"
-    assert loaded["delivery"]["email_to"] == "samjookim@gmail.com"
+    assert loaded["delivery"]["email_to"] == "samislucid98@gmail.com"
 
 
 def test_missing_required_key_raises(tmp_path, base_profile):

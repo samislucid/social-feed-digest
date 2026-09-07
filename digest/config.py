@@ -67,6 +67,12 @@ class Settings:
     reddit_client_id: str | None
     reddit_client_secret: str | None
     reddit_user_agent: str
+    x_api_oauth1_consumer_key: str | None
+    x_api_oauth1_consumer_secret: str | None
+    x_api_access_token: str | None
+    x_api_access_token_secret: str | None
+    x_api_user_id: str | None
+    x_api_base_url: str
     smtp_host: str | None
     smtp_port: int
     smtp_user: str | None
@@ -94,6 +100,13 @@ class Settings:
             reddit_client_id=get("REDDIT_CLIENT_ID"),
             reddit_client_secret=get("REDDIT_CLIENT_SECRET"),
             reddit_user_agent=get("REDDIT_USER_AGENT", "social-feed-digest/0.1 (personal digest)"),
+            # X API v2 seam (optional): OAuth 1.0a user context for Owned Reads.
+            x_api_oauth1_consumer_key=get("X_API_OAUTH1_CONSUMER_KEY"),
+            x_api_oauth1_consumer_secret=get("X_API_OAUTH1_CONSUMER_SECRET"),
+            x_api_access_token=get("X_API_ACCESS_TOKEN"),
+            x_api_access_token_secret=get("X_API_ACCESS_TOKEN_SECRET"),
+            x_api_user_id=get("X_API_USER_ID"),
+            x_api_base_url=get("X_API_BASE_URL", "https://api.x.com").rstrip("/"),
             smtp_host=get("SMTP_HOST"),
             smtp_port=int(get("SMTP_PORT", "587")),
             smtp_user=get("SMTP_USER"),

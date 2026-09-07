@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .collect.linkedin_inbox import collect_linkedin
 from .collect.reddit_collector import collect_reddit
+from .collect.x_following import XFollowingError, cached_handles, ensure_following
 from .collect.xai_collector import XaiError, collect_web_sweep, collect_x_topics
 from .config import ConfigError, Settings, load_profile
 from .deliver import local_date, prune, run_tag_for, send_email, store_digest
@@ -73,7 +74,9 @@ def _run_web_sweep(
         _log(f"WARN: xAI web/news sweep failed unexpectedly: {exc}")
 
 
-def _collect(settings: Settings, profile: dict, skip_portfolio: bool) -> tuple[list, dict, list]:
+def _collect(
+    settings: Settings, profile: dict, skip_portfolio: bool
+) -> tuple[list, dict, list, list[str]]:
     items: list = []
     collection: dict[str, int] = {}
     usage: list[tuple[str, dict]] = []
@@ -88,9 +91,20 @@ def _collect(settings: Settings, profile: dict, skip_portfolio: bool) -> tuple[l
 
     budget = float((profile.get("cost") or {}).get("per_run_budget_usd", 0.25))
 
+    # Optional X API v2 seam: sync the following list at most weekly and inside
+    # the budget; the cache (even stale) boosts followed-author topics.
+    followed: list[str] = []
+    try:
+        followed, following_usage = ensure_following(settings, budget, log=_log)
+        if following_usage:
+            usage.append(("x_following", following_usage))
+    except XFollowingError as exc:
+        _log(f"WARN: X following sync failed: {exc}")
+        followed = cached_handles(settings)
+
     if settings.xai_api_key:
         try:
-            x_items, x_usage = collect_x_topics(settings, profile)
+            x_items, x_usage = collect_x_topics(settings, profile, followed_handles=followed)
             items.extend(x_items)
             collection["x"] = len(x_items)
             usage.append(("x_trends", x_usage))
@@ -118,7 +132,7 @@ def _collect(settings: Settings, profile: dict, skip_portfolio: bool) -> tuple[l
         _log(f"WARN: LinkedIn inbox read failed: {exc}")
         collection["linkedin"] = 0
 
-    return items, collection, usage
+    return items, collection, usage, followed
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -128,8 +142,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         settings.data_dir = Path(args.data_dir)
     profile = load_profile(args.profile)
 
-    items, collection, usage = _collect(settings, profile, args.skip_portfolio)
-    topics = build_topics(items, profile)
+    items, collection, usage, followed = _collect(settings, profile, args.skip_portfolio)
+    topics = build_topics(items, profile, followed_handles=followed)
 
     warnings: list[str] = []
     min_topics = int((profile.get("rank") or {}).get("min_topics", 5))
@@ -207,7 +221,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         Path(args.json_summary).write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
     _log(
-        f"done: {len(digest.topics)}/{max_topics} topics, xAI cost ${total_cost:.4f} "
+        f"done: {len(digest.topics)}/{max_topics} topics, external cost ${total_cost:.4f} "
         f"(budget ${budget:.2f}), {digest.duration_s:.0f}s, artifacts in {run_dir}"
     )
     if digest.duration_s > 300:

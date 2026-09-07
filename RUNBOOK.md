@@ -6,7 +6,7 @@ is ever committed.
 
 ```
 systemd timer (07:30 & 17:30 local) ─> digest run ─> data/digests/<tag>/ + data/pages/
-                                                 ├─> Resend SMTP -> samjookim@gmail.com
+                                                 ├─> Resend SMTP -> samislucid98@gmail.com
                                                  └─> private page (token required)
 ```
 
@@ -17,6 +17,8 @@ systemd timer (07:30 & 17:30 local) ─> digest run ─> data/digests/<tag>/ + d
 - A Resend account (<https://resend.com>) - API key with sending permission.
 - Optional: Reddit app credentials once the manual review approves (the worker
   works before that via RSS).
+- Optional: X API v2 user-context credentials for the followed-account boost
+  (section 8); the worker works without them and behavior is unchanged.
 - Optional: Claude Code CLI for voice-matched drafting (section 5).
 
 ## 2. Clone and install
@@ -64,40 +66,26 @@ against resend.com/docs/send-with-smtp, September 2026). The worker reads that
 variable as the SMTP password; `SMTP_PASSWORD` remains a generic override for
 any non-Resend transport.
 
-**No-domain constraint (live-verified 2026-09-07):** without a verified sending
-domain, Resend delivers only to the Resend account owner's own address, and the
-from-address must be the onboarding sender (`onboarding@resend.dev`). Sam's
-Resend account email is `samislucid98@gmail.com`, so the zero-DNS path currently
-reaches only that inbox; sending to `samjookim@gmail.com` is rejected:
+**No-domain constraint (live-verified 2026-09-07), satisfied by design:** without
+a verified sending domain, Resend delivers only to the Resend account owner's
+own address, and the from-address must be the onboarding sender
+(`onboarding@resend.dev`). The recipient below **is** Sam's Resend account
+owner address, so this constraint never bites: **no domain verification is ever
+needed** for this digest, and `From: onboarding@resend.dev` is permanent unless
+a domain is verified later for some other reason.
 
-```
-550 You can only send testing emails to your own email address
-(samislucid98@gmail.com). To send emails to other recipients, please verify a
-domain at resend.com/domains, and change the `from` address to an email using
-this domain.
-```
-
-**Interim recipient (decided 2026-09-07):** deliver to
-`samislucid98@gmail.com` for now. `.env.example` sets
-`DIGEST_EMAIL_TO=samislucid98@gmail.com`; `profile.yaml` keeps the eventual
-target. When Sam changes the Resend account email to `samjookim@gmail.com` or
-verifies a domain, clear `DIGEST_EMAIL_TO` (or point it at the new address) and
-digests land in the target inbox with no other change.
-
-To deliver to `samjookim@gmail.com` eventually, do one of:
-1. Verify a domain in Resend (DNS records in their dashboard), then set
-   `SMTP_FROM` to an address on that domain. Recommended; also unlocks a proper
-   From identity.
-2. Change the Resend account email to `samjookim@gmail.com`, keeping
-   `SMTP_FROM=onboarding@resend.dev` (zero DNS, but the account inbox changes).
-3. (Interim, in effect now) accept delivery to `samislucid98@gmail.com` via
-   `DIGEST_EMAIL_TO`.
+**Permanent recipient:** `samislucid98@gmail.com`, set in `profile.yaml`
+`delivery.email_to`. `DIGEST_EMAIL_TO` remains an optional override (empty by
+default). Delivering to any other address would first require verifying a
+domain in Resend (DNS records in their dashboard), then setting `SMTP_FROM` to
+an address on that domain; nothing in this repo depends on that ever happening.
 
 Volume is 2 sends/day, comfortably inside Resend's free tier - check the current
 limits at <https://resend.com/pricing> rather than relying on a number here.
 
-Optional overrides: `DIGEST_EMAIL_TO` (defaults to `profile.yaml` delivery
-address), `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` once approved.
+Optional overrides: `DIGEST_EMAIL_TO` (defaults to the `profile.yaml` delivery
+address), `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` once approved, and the
+X API v2 credentials in section 8.
 
 ## 4. First dry run
 
@@ -112,7 +100,7 @@ existing digest artifact through the bridge and expect Resend's queued response:
 
 ```bash
 .venv/bin/python -m digest send
-# expect: email sent to samjookim@gmail.com: 250 ... Ok: queued ...
+# expect: email sent to samislucid98@gmail.com: 250 ... Ok: queued ...
 ```
 
 If Resend rejects the send, the error prints verbatim; with the onboarding
@@ -223,16 +211,66 @@ The portfolio watchlist sweeps once per day (state marker in
 `data/state/`) and folds into that day's first digest. Each run prunes artifacts
 older than `retention_days` (default 30), meeting the 30-day retention floor.
 
-## 8. Verification checklist
+## 8. Optional: X API v2 followed-account boost
+
+Without these credentials the worker behaves exactly as before (no requests, no
+state). With them, the worker syncs Sam's following list at most once a week via
+an Owned Read (`GET /2/users/{id}/following`, `$0.001` per account per docs.x.com
+pricing), caches it in `data/state/x_following.json`, and boosts digest topics
+authored by accounts Sam follows (the handles also inform the xAI scout prompt
+at no extra cost). The sync is hard-capped by `cost.per_run_budget_usd`: it only
+fetches pages the remaining run budget can afford, then resumes from the cursor
+on the next weekly window, so no full run ever exceeds the budget.
+
+One-time setup:
+
+1. Create an app at <https://console.x.com>: add a project, create an app, and
+   enable OAuth 1.0a user authentication with Read permissions.
+2. Buy a small credit balance in the console and set a spending limit. The sync
+   spends at most the run budget minus a small reserve for the standing xAI
+   calls, and never syncs more than once a week.
+3. User-context auth on the VPS: in the app's "Keys and tokens" page, generate
+   the OAuth 1.0a Consumer Keys and your own user Access Token and Secret (a
+   personal app can generate tokens for its owner). Fill them into `.env` per
+   `.env.example`:
+   - `X_API_OAUTH1_CONSUMER_KEY` / `X_API_OAUTH1_CONSUMER_SECRET`
+   - `X_API_ACCESS_TOKEN` / `X_API_ACCESS_TOKEN_SECRET`
+4. Find your numeric id once (a single Owned Read, $0.001). With the `.env`
+   loaded (`set -a; source .env; set +a`):
+
+   ```bash
+   .venv/bin/python - <<'PY'
+   import os, requests
+   from requests_oauthlib import OAuth1
+   a = OAuth1(os.environ["X_API_OAUTH1_CONSUMER_KEY"], os.environ["X_API_OAUTH1_CONSUMER_SECRET"],
+              os.environ["X_API_ACCESS_TOKEN"], os.environ["X_API_ACCESS_TOKEN_SECRET"])
+   print(requests.get("https://api.x.com/2/users/me", auth=a).json())
+   PY
+   ```
+
+   Put the returned `data.id` into `.env` as `X_API_USER_ID`.
+5. Install the optional extra and verify with a dry run:
+
+   ```bash
+   .venv/bin/pip install -e '.[xapi]'
+   .venv/bin/python -m digest run --dry-run
+   ```
+
+   Expect an `X following sync: N accounts read ...` log line and
+   `data/state/x_following.json` present. Pricing and rate limits can change;
+   confirm in console.x.com before relying on them.
+
+## 9. Verification checklist
 
 - [ ] `systemctl list-timers digest.timer` shows two upcoming triggers.
 - [ ] `ls data/digests` shows a dated run dir twice a day; `digest.md/html/json/eml` present.
 - [ ] `python -m digest send` re-sends the latest digest and prints Resend's queued response.
-- [ ] Email arrives at samislucid98@gmail.com (interim recipient); `From: onboarding@resend.dev` until a domain is verified.
+- [ ] Email arrives at samislucid98@gmail.com (the Resend account owner address); `From: onboarding@resend.dev`.
+- [ ] If X API credentials are set: the log shows `X following sync` at most once a week and `data/state/x_following.json` exists.
 - [ ] Private page 200 with token, 404 without; `journalctl -u digest-page` clean.
 - [ ] Run log shows `est. external cost` under $0.25 and no `WARNING` lines.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | Cause / fix |
 | --- | --- |
@@ -241,6 +279,7 @@ older than `retention_days` (default 30), meeting the 30-day retention floor.
 | `rate-limited, backing off` (Reddit) | expected for unauthenticated RSS; the run retries with backoff. Fill `REDDIT_*` once approved, or ignore if 2 of 3 subs still yield 5+ topics |
 | `using template drafts` in the log | `claude` CLI missing or not logged in for the service user; install/login per section 5 |
 | `run cost $... exceeded budget` | tighten `x_search.candidate_topics`, per-call search caps in `digest/collect/xai_collector.py`, or raise `cost.per_run_budget_usd` |
+| `X following sync failed` | X API creds missing/invalid, `requests-oauthlib` not installed (`pip install -e '.[xapi]'`), or no credit left at console.x.com; the run continues with the cached list |
 | `refusing to serve an unprotected private page` | `DIGEST_PAGE_TOKEN` missing from `.env` |
 | no email, no error | Resend no-domain rule: recipient must be the Resend account owner's address while `SMTP_FROM=onboarding@resend.dev` |
 

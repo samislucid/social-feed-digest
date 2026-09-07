@@ -26,7 +26,7 @@ def _digest(base_profile, run_tag: str = "2026-09-07_0930") -> Digest:
         draft_source="template-fallback",
         collection={"x": 1},
         cost={"search_tool_calls": 2, "total_usd": 0.01, "budget_usd": 0.25, "calls": []},
-        email_to="samjookim@gmail.com",
+        email_to="samislucid98@gmail.com",
     )
 
 
@@ -93,7 +93,7 @@ class _FakeSMTP:
 def _email_message() -> EmailMessage:
     msg = EmailMessage()
     msg["From"] = "onboarding@resend.dev"
-    msg["To"] = "samjookim@gmail.com"
+    msg["To"] = "samislucid98@gmail.com"
     msg["Subject"] = "test digest"
     msg.set_content("body")
     return msg
@@ -110,7 +110,7 @@ def test_send_email_reports_server_acceptance(monkeypatch, settings):
     smtp = _FakeSMTP.last_instance
     assert ("login", "resend", "re_test") in smtp.calls
     assert ("mail", "onboarding@resend.dev") in smtp.calls
-    assert ("rcpt", "samjookim@gmail.com") in smtp.calls
+    assert ("rcpt", "samislucid98@gmail.com") in smtp.calls
 
 
 def test_send_email_raises_verbatim_on_rejection(monkeypatch, settings):

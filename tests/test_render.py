@@ -24,7 +24,7 @@ def _digest(base_profile) -> Digest:
         draft_source="template-fallback",
         collection={"reddit": 2, "x": 2},
         cost={"search_tool_calls": 4, "total_usd": 0.0312, "budget_usd": 0.25, "calls": []},
-        email_to="samjookim@gmail.com",
+        email_to="samislucid98@gmail.com",
         subject_prefix="[Feed Digest]",
         warnings=["only 2 topics ranked (profile minimum 5)"],
     )
@@ -54,7 +54,7 @@ def test_email_is_multipart_with_correct_headers(base_profile):
     md = render_markdown(digest)
     html = render_html(digest)
     msg = build_email(digest, md, html, from_addr="digest@example.com")
-    assert msg["To"] == "samjookim@gmail.com"
+    assert msg["To"] == "samislucid98@gmail.com"
     assert msg["From"] == "digest@example.com"
     assert "[Feed Digest]" in msg["Subject"]
     assert msg["X-Digest-Run"] == "2026-09-07_0930"

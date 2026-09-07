@@ -28,7 +28,7 @@ def base_profile() -> dict:
         "post_ideas": {"per_channel": 3, "channels": ["x", "linkedin", "reddit"]},
         "rank": {"min_topics": 2, "max_topics": 8},
         "cost": {"per_run_budget_usd": 0.25},
-        "delivery": {"email_to": "samjookim@gmail.com", "email_subject_prefix": "[Feed Digest]"},
+        "delivery": {"email_to": "samislucid98@gmail.com", "email_subject_prefix": "[Feed Digest]"},
         "retention_days": 30,
     }
 

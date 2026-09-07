@@ -75,9 +75,10 @@ cost:
   per_run_budget_usd: 0.25   # hard acceptance cap for external API cost per full run
 
 delivery:
-  # Eventual target. Interim (until the Resend account email changes or a domain
-  # is verified): set DIGEST_EMAIL_TO=samislucid98@gmail.com, which overrides this.
-  email_to: samjookim@gmail.com
+  # Permanent recipient: Sam's Resend account owner address. Resend's no-domain
+  # constraint (sends only to the account owner, From must be onboarding@resend.dev)
+  # is satisfied by design here, so no domain verification is ever needed.
+  email_to: samislucid98@gmail.com
   email_subject_prefix: "[Feed Digest]"
 
 retention_days: 30
