@@ -96,6 +96,27 @@ def _shortlist_size(profile: dict) -> int:
     return int((profile.get("engagement") or {}).get("shortlist_size", 3))
 
 
+def _guidance_strings(entries: object) -> list[str]:
+    """Flatten free-form profile guidance (dos/donts/voice_samples) to prompt strings.
+
+    profile.yaml is user-editable state ("Edit freely" per the file header), so
+    entries may be plain strings or structured mappings such as a pasted voice
+    block. Render any shape readably; never raise inside _build_prompt.
+    """
+    out: list[str] = []
+    for entry in entries or []:
+        if isinstance(entry, dict):
+            rendered = "; ".join(f"{k}: {v}" for k, v in entry.items() if str(v or "").strip())
+        elif entry is None:
+            rendered = ""
+        else:
+            rendered = str(entry)
+        rendered = " ".join(str(rendered).split())
+        if rendered:
+            out.append(rendered)
+    return out
+
+
 def _build_prompt(topics: list[Topic], profile: dict, per_channel: int, channels: list[str]) -> str:
     d = profile.get("drafting") or {}
     bs = profile.get("brightstack") or {}
@@ -107,7 +128,7 @@ def _build_prompt(topics: list[Topic], profile: dict, per_channel: int, channels
             f"{i}. {topic.title} | why hot: {topic.why_hot} | source: {topic.source_url} | "
             f"niches: {topic.niche} | channels: {', '.join(topic.channel_labels)}{text_part}"
         )
-    samples = "\n".join(f"- {s}" for s in (d.get("voice_samples") or [])) or "- (none yet; neutral sharp register)"
+    samples = "\n".join(f"- {s}" for s in _guidance_strings(d.get("voice_samples"))) or "- (none yet; neutral sharp register)"
     ideas_example = ", ".join(f'"{c}": ["..."]' for c in channels)
     shortlist_size = _shortlist_size(profile)
 
@@ -138,8 +159,8 @@ def _build_prompt(topics: list[Topic], profile: dict, per_channel: int, channels
         "You ghostwrite social media engagement for Sam.\n"
         f"Tone: {d.get('tone', 'neutral, sharp, specific')}.\n"
         f"Audience: {profile.get('audience', 'AI builders, investors, sports and markets watchers')}.\n"
-        "Do: " + "; ".join(d.get("dos") or []) + "\n"
-        "Don't: " + "; ".join(d.get("donts") or []) + "\n"
+        "Do: " + "; ".join(_guidance_strings(d.get("dos"))) + "\n"
+        "Don't: " + "; ".join(_guidance_strings(d.get("donts"))) + "\n"
         "Voice samples:\n" + samples + "\n"
         + brightstack
         + "\n"
@@ -258,13 +279,21 @@ def draft_digest(topics: list[Topic], profile: dict, settings: Settings, log=pri
     result: dict = {"source": "claude", "post_ideas": {}, "claude_error": None, "shortlist": []}
     parsed = None
     if topics and not settings.disable_claude:
-        out, reason = _run_claude(_build_prompt(topics, profile, per_channel, channels), settings)
-        if reason:
-            result["claude_error"] = reason
-            log(f"WARN: claude -p unavailable: {reason}")
-        parsed = _extract_json(out) if out else None
-        if out and parsed is None:
-            result["claude_error"] = "claude output was not parseable JSON"
+        try:
+            prompt = _build_prompt(topics, profile, per_channel, channels)
+        except Exception as exc:  # noqa: BLE001 - a profile edit that breaks the
+            # prompt must degrade the run, never kill it: the digest still ships
+            # with DRAFTING DEGRADED and the real reason in the email footer.
+            result["claude_error"] = f"prompt build failed from profile: {exc}"
+            log(f"WARN: claude -p unavailable: {result['claude_error']}")
+        else:
+            out, reason = _run_claude(prompt, settings)
+            if reason:
+                result["claude_error"] = reason
+                log(f"WARN: claude -p unavailable: {reason}")
+            parsed = _extract_json(out) if out else None
+            if out and parsed is None:
+                result["claude_error"] = "claude output was not parseable JSON"
     elif settings.disable_claude:
         result["claude_error"] = "drafting disabled (DIGEST_DISABLE_CLAUDE=1)"
 
