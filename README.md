@@ -6,6 +6,16 @@ ready-to-paste suggested comment per topic, a no-comment quiet-share link per
 topic, and 3-5 original post ideas per channel. Delivered by email (Resend SMTP)
 and served from a private token-protected page.
 
+## Note for Reddit developer-platform reviewers
+
+This is a personal, read-only digest for its owner. The Reddit integration reads
+hot listings from a small curated subreddit list in `profile.yaml`; it never
+posts, comments, votes, or messages. The only code that touches Reddit is
+`digest/collect/reddit_collector.py` (public RSS fallback now, official Data API
+via PRAW once app credentials exist). There is no public interface for other
+users: the sole outputs are an email to the owner and a private, token-protected
+page. It runs as a scheduled job on the owner's personal VPS.
+
 ## Pipeline
 
 ```
