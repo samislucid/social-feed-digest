@@ -154,9 +154,16 @@ artifacts, so start by reading it:
 
 ```bash
 cd /opt/social-feed-digest && git pull && .venv/bin/pip install -e .
-sudo systemctl start digest.service               # one test run right now
+sudo systemctl start digest.service               # one test run right now (blocks; see below)
 journalctl -u digest.service -n 100 --no-pager | grep -iE 'claude|DEGRADED'
 ```
+
+Step 1 blocks by design: `digest.service` is a oneshot, so `systemctl start`
+waits for the full run to finish (2-5 minutes; claude drafting runs inside the
+service). A long silent prompt is normal, not a hang. Pasting the whole block
+is safe: the `journalctl` line only runs once the start command returns, i.e.
+against a finished run. Ctrl-C would detach from the wait; it does not stop
+the run, and the log's `done: ...` line marks a finished run.
 
 The log line `WARN: claude -p unavailable: ...` states the failure: binary not
 found on PATH (with the PATH the service actually saw), a non-zero exit with
@@ -198,6 +205,11 @@ sudo systemctl daemon-reload
 sudo systemctl start digest.service --no-block
 journalctl -u digest.service -f    # expect: drafts via claude -p: N comments ...
 ```
+
+Wait for the run to finish: `--no-block` only makes `systemctl start` return
+immediately, and Ctrl-C exits the log tail without stopping the run. The run
+takes 2-5 minutes (claude drafting included) and is done when the log prints
+`done: N/M topics ... artifacts in ...`.
 
 Pass criteria: the log shows `drafts via claude -p`, no `WARN: claude -p
 unavailable` line; the new email has no `[DEGRADED: template drafts]` subject
@@ -276,6 +288,11 @@ sudo systemctl daemon-reload && sudo systemctl enable --now digest.timer
 systemctl list-timers digest.timer    # next run visible
 journalctl -u digest.service -f       # watch a run
 ```
+
+`Persistent=true` fires a run as soon as the timer starts if a scheduled slot
+was missed, so `journalctl` may show one immediately. Each run takes 2-5
+minutes (claude drafting included); wait for the `done:` line instead of
+reading the quiet stretch as a hang.
 
 The portfolio watchlist sweeps once per day (state marker in
 `data/state/`) and folds into that day's first digest. Each run prunes artifacts
