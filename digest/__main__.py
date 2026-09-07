@@ -269,6 +269,12 @@ def cmd_send(args) -> int:
         del message["From"]
         message["From"] = settings.smtp_from
         _log(f"From set to {settings.smtp_from} (from current SMTP_FROM, overriding artifact)")
+    rcpt_override = args.to or settings.email_to_override
+    if rcpt_override and str(message.get("To", "")) != rcpt_override:
+        del message["To"]
+        message["To"] = rcpt_override
+        source = "--to flag" if args.to else "DIGEST_EMAIL_TO"
+        _log(f"To set to {rcpt_override} (from {source}, overriding artifact)")
     try:
         status = send_email(message, settings, dry_run=False, log=_log)
     except smtplib.SMTPException as exc:
@@ -303,6 +309,9 @@ def main(argv: list[str] | None = None) -> int:
         "send", help="re-send an existing digest .eml via the SMTP bridge (no re-collection)"
     )
     send_p.add_argument("--run-tag", default=None, help="digest run tag; defaults to the latest")
+    send_p.add_argument(
+        "--to", default=None, help="override recipient; default is the artifact's To, or DIGEST_EMAIL_TO"
+    )
 
     args = parser.parse_args(argv)
     handlers = {"run": cmd_run, "serve": cmd_serve, "prune": cmd_prune, "send": cmd_send}

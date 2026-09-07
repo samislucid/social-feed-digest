@@ -77,14 +77,21 @@ domain at resend.com/domains, and change the `from` address to an email using
 this domain.
 ```
 
-To deliver to `samjookim@gmail.com`, do one of:
+**Interim recipient (decided 2026-09-07):** deliver to
+`samislucid98@gmail.com` for now. `.env.example` sets
+`DIGEST_EMAIL_TO=samislucid98@gmail.com`; `profile.yaml` keeps the eventual
+target. When Sam changes the Resend account email to `samjookim@gmail.com` or
+verifies a domain, clear `DIGEST_EMAIL_TO` (or point it at the new address) and
+digests land in the target inbox with no other change.
+
+To deliver to `samjookim@gmail.com` eventually, do one of:
 1. Verify a domain in Resend (DNS records in their dashboard), then set
    `SMTP_FROM` to an address on that domain. Recommended; also unlocks a proper
    From identity.
 2. Change the Resend account email to `samjookim@gmail.com`, keeping
    `SMTP_FROM=onboarding@resend.dev` (zero DNS, but the account inbox changes).
-3. Accept delivery to `samislucid98@gmail.com` temporarily by pointing
-   `DIGEST_EMAIL_TO` there.
+3. (Interim, in effect now) accept delivery to `samislucid98@gmail.com` via
+   `DIGEST_EMAIL_TO`.
 
 Volume is 2 sends/day, comfortably inside Resend's free tier - check the current
 limits at <https://resend.com/pricing> rather than relying on a number here.
@@ -221,7 +228,7 @@ older than `retention_days` (default 30), meeting the 30-day retention floor.
 - [ ] `systemctl list-timers digest.timer` shows two upcoming triggers.
 - [ ] `ls data/digests` shows a dated run dir twice a day; `digest.md/html/json/eml` present.
 - [ ] `python -m digest send` re-sends the latest digest and prints Resend's queued response.
-- [ ] Email arrives at samjookim@gmail.com; `From: onboarding@resend.dev` until a domain is verified.
+- [ ] Email arrives at samislucid98@gmail.com (interim recipient); `From: onboarding@resend.dev` until a domain is verified.
 - [ ] Private page 200 with token, 404 without; `journalctl -u digest-page` clean.
 - [ ] Run log shows `est. external cost` under $0.25 and no `WARNING` lines.
 
