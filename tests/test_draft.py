@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from digest import draft as draft_mod
+from digest.config import load_profile
 from digest.items import Item
 from digest.rank import build_topics
 
@@ -153,6 +155,48 @@ def test_prompt_grounded_in_post_text_with_guardrails(base_profile):
     assert "no promo spam" in prompt
     # JSON contract includes the shortlist
     assert '"shortlist"' in prompt
+
+
+def test_prompt_builds_from_real_repo_profile():
+    """Regression for the 2026-09-07 12:24 PT VPS crash: build the prompt from the
+    shipped profile.yaml itself. Fixtures (dos: []) and DIGEST_DISABLE_CLAUDE=1
+    e2e runs both skip _build_prompt, so the dos/donts joins shipped untested."""
+    repo_profile = load_profile(Path(__file__).resolve().parents[1] / "profile.yaml")
+    prompt = draft_mod._build_prompt(_topics(repo_profile), repo_profile, 4, ["x", "linkedin", "reddit"])
+    assert "Do: ground every comment" in prompt  # dos survive the join
+    assert "no hashtag stacks or emoji" in prompt  # donts survive the join
+    # reshape intent: the brightstack voice block still reaches the prompt
+    assert "AI-native workspace with a full team of agents" in prompt
+
+
+def test_structured_guidance_renders_into_prompt(base_profile):
+    """A dict inside dos (how the VPS profile crashed) renders readably instead
+    of raising 'sequence item 0: expected str instance, dict found'."""
+    profile = {**base_profile, "drafting": {
+        **base_profile["drafting"],
+        "dos": [{"voice": "Brightstack", "when": "AI workflow threads"}, "short, declarative, no hedging"],
+        "donts": [{"never": "pitch into unrelated threads"}],
+    }}
+    prompt = draft_mod._build_prompt(_topics(profile), profile, 4, ["x", "linkedin", "reddit"])
+    assert "voice: Brightstack; when: AI workflow threads" in prompt
+    assert "short, declarative, no hedging" in prompt
+    assert "never: pitch into unrelated threads" in prompt
+
+
+def test_prompt_build_failure_degrades_run_with_real_reason(base_profile, settings, monkeypatch):
+    """Degraded-not-dead: a prompt-building failure surfaces as the established
+    claude_error (DRAFTING DEGRADED in the email), never kills the run."""
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("bad profile edit")
+
+    monkeypatch.setattr(draft_mod, "_build_prompt", boom)
+    settings.disable_claude = False
+    topics = _topics(base_profile)
+    result = draft_mod.draft_digest(topics, base_profile, settings)
+    assert result["source"] == "template-fallback"
+    assert result["claude_error"] == "prompt build failed from profile: bad profile edit"
+    assert all(t.comment.startswith("[TEMPLATE DRAFT") for t in topics)
 
 
 def test_shortlist_from_claude_is_mapped_to_topics(base_profile, settings, monkeypatch):
