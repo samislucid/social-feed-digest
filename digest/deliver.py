@@ -53,10 +53,15 @@ def digest_to_dict(digest: Digest) -> dict:
             for i, t in enumerate(digest.topics, 1)
         ],
         "post_ideas": digest.post_ideas,
+        "shortlist": [
+            {"title": s.title, "url": s.url, "why": s.why, "comment": s.comment}
+            for s in digest.shortlist
+        ],
         "collection": digest.collection,
         "cost": digest.cost,
         "warnings": digest.warnings,
         "duration_s": round(digest.duration_s, 1),
+        "claude_error": digest.claude_error,
     }
 
 

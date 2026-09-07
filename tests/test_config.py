@@ -75,6 +75,7 @@ def test_settings_from_env_parses_values():
             "SMTP_PORT": "465",
             "DIGEST_EMAIL_TO": "someone@example.com",
             "DIGEST_DISABLE_CLAUDE": "1",
+            "DIGEST_CLAUDE_BIN": "/home/sam/.local/bin/claude",
         }
     )
     assert s.xai_api_key == "k"
@@ -82,3 +83,8 @@ def test_settings_from_env_parses_values():
     assert s.smtp_port == 465
     assert s.email_to_override == "someone@example.com"
     assert s.disable_claude is True
+    assert s.claude_bin == "/home/sam/.local/bin/claude"
+
+
+def test_claude_bin_defaults_to_none(settings):
+    assert settings.claude_bin is None

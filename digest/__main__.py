@@ -182,6 +182,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         subject_prefix=(profile.get("delivery") or {}).get("email_subject_prefix", "[Feed Digest]"),
         duration_s=time.monotonic() - started,
         warnings=warnings,
+        shortlist=draft.get("shortlist") or [],
+        claude_error=str(draft.get("claude_error") or ""),
     )
 
     markdown = render_markdown(digest)
@@ -209,6 +211,11 @@ def cmd_run(args: argparse.Namespace) -> int:
             ],
             "post_idea_counts": {k: len(v) for k, v in digest.post_ideas.items()},
             "draft_source": digest.draft_source,
+            "claude_error": digest.claude_error,
+            "shortlist": [
+                {"title": s.title, "url": s.url, "why": s.why, "comment": s.comment}
+                for s in digest.shortlist
+            ],
             "collection": collection,
             "cost_usd": round(total_cost, 4),
             "budget_usd": budget,

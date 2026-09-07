@@ -49,6 +49,47 @@ def test_html_escapes_hostile_titles(base_profile):
     assert "&lt;script&gt;" in html
 
 
+def test_degraded_run_marks_subject_and_footer(base_profile):
+    from digest.render import DEGRADED_SUBJECT_TAG
+
+    digest = _digest(base_profile)
+    digest.claude_error = "claude exited 1: Invalid API key: please log in"
+    assert DEGRADED_SUBJECT_TAG in digest.subject
+    md = render_markdown(digest)
+    assert "DRAFTING DEGRADED: claude exited 1: Invalid API key: please log in" in md
+    assert "DRAFTING DEGRADED" in render_html(digest)
+    msg = build_email(digest, md, render_html(digest), from_addr="d@e.com")
+    assert DEGRADED_SUBJECT_TAG in msg["Subject"]
+
+
+def test_healthy_subject_has_no_degraded_tag(base_profile):
+    digest = _digest(base_profile)
+    digest.draft_source = "claude"
+    assert "[DEGRADED" not in digest.subject
+
+
+def test_shortlist_renders_with_ready_to_post_comment(base_profile):
+    from digest.draft import ShortlistEntry
+
+    digest = _digest(base_profile)
+    digest.shortlist = [
+        ShortlistEntry(
+            index=1,
+            title=digest.topics[0].title,
+            url="https://x.com/u/status/1",
+            why="practitioner angle the thread is missing",
+            comment="Ready-to-post comment body.",
+        )
+    ]
+    md = render_markdown(digest)
+    assert "## Engagement shortlist" in md
+    assert "Fit: practitioner angle the thread is missing" in md
+    assert "Ready-to-post comment: Ready-to-post comment body." in md
+    html = render_html(digest)
+    assert "Engagement shortlist" in html
+    assert "Ready-to-post comment body." in html
+
+
 def test_email_is_multipart_with_correct_headers(base_profile):
     digest = _digest(base_profile)
     md = render_markdown(digest)

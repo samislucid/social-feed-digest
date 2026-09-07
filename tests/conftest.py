@@ -25,6 +25,18 @@ def base_profile() -> dict:
         "portfolio": {"enabled": True, "watchlist": ["SpaceX", "neo4j"]},
         "linkedin": {"inbox": "inbox/linkedin"},
         "drafting": {"tone": "neutral, sharp", "voice_samples": [], "dos": [], "donts": []},
+        "brightstack": {
+            "name": "Brightstack",
+            "one_liner": "AI-native workspace with a full team of agents, so work stays in one place with full context.",
+            "audience": "PMs and operators using AI to do work that used to need engineers",
+            "flows": ["Research", "Spec", "Implementation", "Review", "Iteration"],
+            "voice": {
+                "register": "senior practitioner talking to peers",
+                "when_to_mention": "only when the post is genuinely about AI workflows or coding agents",
+                "never": "no promo spam, no hype, no pitching into unrelated threads",
+            },
+        },
+        "engagement": {"shortlist_size": 2},
         "post_ideas": {"per_channel": 3, "channels": ["x", "linkedin", "reddit"]},
         "rank": {"min_topics": 2, "max_topics": 8},
         "cost": {"per_run_budget_usd": 0.25},

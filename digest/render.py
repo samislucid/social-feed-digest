@@ -7,9 +7,13 @@ from email.message import EmailMessage
 from email.utils import formatdate
 from html import escape
 
+from .draft import TEMPLATE_MARKER, ShortlistEntry
 from .rank import Topic
 
 CHANNEL_NAMES = {"x": "X", "reddit": "Reddit", "linkedin": "LinkedIn", "web": "Web", "news": "News"}
+# Subject tag when drafts fell back, so a degraded run is visible in the inbox
+# before it is opened. The real failure reason lives in the run footer.
+DEGRADED_SUBJECT_TAG = "[DEGRADED: template drafts]"
 
 
 @dataclass
@@ -28,10 +32,15 @@ class Digest:
     subject_prefix: str = "[Feed Digest]"
     duration_s: float = 0.0
     warnings: list[str] = field(default_factory=list)
+    shortlist: list[ShortlistEntry] = field(default_factory=list)
+    claude_error: str = ""
 
     @property
     def subject(self) -> str:
-        return f"{self.subject_prefix} {self.run_tag} - {len(self.topics)} topics"
+        s = f"{self.subject_prefix} {self.run_tag} - {len(self.topics)} topics"
+        if self.draft_source == "template-fallback":
+            s += f" {DEGRADED_SUBJECT_TAG}"
+        return s
 
 
 def channel_label(channel: str) -> str:
@@ -53,11 +62,9 @@ def render_markdown(digest: Digest) -> str:
     )
     lines.append("")
     if digest.draft_source == "template-fallback":
-        from .draft import TEMPLATE_MARKER
-
         lines.append("")
         lines.append(f"> {TEMPLATE_MARKER}: comments and post ideas below are placeholders until")
-        lines.append("> the claude CLI is installed and authenticated (see RUNBOOK.md).")
+        lines.append("> the claude CLI is installed and authenticated (see RUNBOOK.md, section 5).")
     lines.append("")
     lines.append(f"## Topics ({len(digest.topics)}, ranked)")
     for i, topic in enumerate(digest.topics, 1):
@@ -68,6 +75,15 @@ def render_markdown(digest: Digest) -> str:
         lines.append(f"- Source: {topic.source_url}")
         lines.append(f"- Quiet share: {topic.quiet_share_url}")
         lines.append(f"- Suggested comment: {topic.comment}")
+    if digest.shortlist:
+        lines.append("")
+        lines.append("## Engagement shortlist")
+        for i, entry in enumerate(digest.shortlist, 1):
+            lines.append("")
+            lines.append(f"### {i}. {entry.title}")
+            lines.append(f"- Fit: {entry.why}")
+            lines.append(f"- Post: {entry.url}")
+            lines.append(f"- Ready-to-post comment: {entry.comment}")
     lines.append("")
     lines.append("## Post ideas")
     for channel, ideas in digest.post_ideas.items():
@@ -84,6 +100,8 @@ def render_markdown(digest: Digest) -> str:
     lines.append(f"- xAI Live Search tool calls: {searches} · est. cost: ${digest.cost.get('total_usd', 0.0):.4f} "
                  f"(budget ${digest.cost.get('budget_usd', 0.25):.2f})")
     lines.append(f"- Run duration: {digest.duration_s:.1f}s")
+    if digest.claude_error:
+        lines.append(f"- DRAFTING DEGRADED: {digest.claude_error}")
     for warning in digest.warnings:
         lines.append(f"- WARNING: {warning}")
     lines.append("")
@@ -130,6 +148,20 @@ def render_html(digest: Digest) -> str:
             f'<p class="meta">Quiet share: <a href="{e(topic.quiet_share_url)}">{e(topic.quiet_share_url)}</a></p>'
             f'<div class="comment">{comment_html}</div></div>'
         )
+    if digest.shortlist:
+        parts.append("<h2>Engagement shortlist</h2>")
+        for i, entry in enumerate(digest.shortlist, 1):
+            comment_html = e(entry.comment)
+            if entry.comment.startswith("[TEMPLATE DRAFT"):
+                comment_html = (
+                    f'<span class="template">{e("[TEMPLATE DRAFT]")}</span>' + e(entry.comment.split("]", 1)[-1])
+                )
+            parts.append(
+                f'<div class="topic"><h3>{i}. {e(entry.title)}</h3>'
+                f'<p class="meta">Fit: {e(entry.why)}</p>'
+                f'<p class="meta">Post: <a href="{e(entry.url)}">{e(entry.url)}</a></p>'
+                f'<div class="comment">{comment_html}</div></div>'
+            )
     parts.append("<h2>Post ideas</h2>")
     for channel, ideas in digest.post_ideas.items():
         parts.append(f"<h3>{e(channel_label(channel))}</h3><ul>")
@@ -144,6 +176,8 @@ def render_html(digest: Digest) -> str:
         f'(budget ${digest.cost.get("budget_usd", 0.25):.2f}) · '
         f"duration {digest.duration_s:.0f}s"
     )
+    if digest.claude_error:
+        parts.append(f"<br>DRAFTING DEGRADED: {e(digest.claude_error)}")
     for warning in digest.warnings:
         parts.append(f"<br>WARNING: {e(warning)}")
     parts.append("</footer></body></html>")

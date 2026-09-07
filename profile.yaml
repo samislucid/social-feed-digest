@@ -55,13 +55,44 @@ drafting:
   tone: "neutral, sharp, specific; plain declarative sentences"
   voice_samples: []          # approved/edited comments land here; profile reviewed after two weeks
   dos:
-    - reference the specific source, number, or claim
+    - ground every comment in the post's own text: build on or answer a concrete claim from it
     - short, declarative, no hedging
     - one idea per comment
+    - sound like a real reply Sam would actually post on that specific thread
   donts:
     - no hype words (game-changing, revolutionary, mind-blowing)
     - no hashtag stacks or emoji
     - no unsolicited financial advice
+    - no generic engagement bait ('great post', 'interesting take')
+    - no post ideas that restate one article, retitle a single story, or propose link shares
+    - no Brightstack pitches in threads where it does not genuinely fit
+
+# Brightstack positioning + voice, consumed by digest/draft.py _build_prompt.
+# Short by design: light product relevance in AI-workflow threads, never promo.
+brightstack:
+  name: Brightstack
+  one_liner: >-
+    Brightstack is an AI-native workspace with a full team of agents - PM,
+    researcher, engineer, QA and more - so work moves from research to review in
+    one place with full context, instead of bouncing between Notion, Linear,
+    Slack and GitHub.
+  audience: >-
+    Technically fluent PMs and operators who use AI to do work that used to
+    need engineers.
+  flows: [Research, Spec, Implementation, Review, Iteration]
+  voice:
+    register: "senior practitioner talking to peers; concrete, understated, plain sentences"
+    when_to_mention: >-
+      the thread is genuinely about AI workflows, coding agents, or AI changing
+      how teams build and ship; at most one light, relevant mention per comment
+    never: >-
+      promo spam, 'check out our product', hype words, or pitching Brightstack
+      into threads where it does not fit
+
+engagement:
+  # Posts picked per run for the engagement shortlist, by comment-fit (AI topics
+  # where a practitioner reply with light Brightstack relevance lands), not raw heat.
+  shortlist_size: 3
 
 post_ideas:
   per_channel: 4             # 3-5 per channel

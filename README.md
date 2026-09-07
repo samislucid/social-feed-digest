@@ -2,9 +2,16 @@
 
 Twice-daily digest of hot topics from Sam's circles: X, Reddit, and (via a watched
 inbox) LinkedIn. Each digest has 5-8 ranked topics with source links, a
-ready-to-paste suggested comment per topic, a no-comment quiet-share link per
-topic, and 3-5 original post ideas per channel. Delivered by email (Resend SMTP)
-and served from a private token-protected page.
+ready-to-paste suggested comment per topic (grounded in the post's own text), a
+no-comment quiet-share link per topic, an engagement shortlist of the posts most
+worth commenting on (picked for comment-fit, each with a ready-to-post draft),
+and 3-5 original post ideas per channel (cross-source synthesis, never rehashed
+single posts or link shares). The Brightstack positioning/voice block in
+`profile.yaml` steers drafting. Delivered by email (Resend SMTP) and served from
+a private token-protected page. A run whose claude drafting failed says so in
+the email subject (`[DEGRADED: template drafts]`) and names the exact failure
+reason in the run footer. See `samples/digest-shape-sample.md` for a full
+example.
 
 ## Note for Reddit developer-platform reviewers
 

@@ -80,6 +80,9 @@ class Settings:
     smtp_from: str | None
     email_to_override: str | None
     disable_claude: bool = False  # DIGEST_DISABLE_CLAUDE=1 forces template drafts (tests, bare CI)
+    # DIGEST_CLAUDE_BIN: absolute path to the claude CLI when the service PATH
+    # cannot see it (systemd default PATH misses ~/.local/bin and nvm trees).
+    claude_bin: str | None = None
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> "Settings":
@@ -116,4 +119,5 @@ class Settings:
             smtp_from=get("SMTP_FROM") or get("SMTP_USER"),
             email_to_override=get("DIGEST_EMAIL_TO"),
             disable_claude=get("DIGEST_DISABLE_CLAUDE", "") in ("1", "true", "yes"),
+            claude_bin=get("DIGEST_CLAUDE_BIN"),
         )

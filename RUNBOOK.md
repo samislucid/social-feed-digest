@@ -126,13 +126,83 @@ claude login                                     # once, as the same user system
 claude -p "Reply with OK"                        # verify non-interactive use works
 ```
 
+If the service's PATH cannot see the binary, point the worker straight at it via
+`.env` (no unit edit needed; the next run start picks it up):
+
+```bash
+echo "DIGEST_CLAUDE_BIN=$(sudo -u "$(systemctl show -p User --value digest.service)" bash -lc 'command -v claude' 2>/dev/null)" | sudo tee -a /opt/social-feed-digest/.env
+```
+
 Until the CLI is present the run still completes: comments and post ideas are
-clearly marked `TEMPLATE DRAFT`, and the digest header records
+clearly marked `TEMPLATE DRAFT`, the email subject is tagged
+`[DEGRADED: template drafts]`, the run footer names the exact claude failure
+reason (`DRAFTING DEGRADED: ...`), and the digest header records
 `drafting: template-fallback`. `DIGEST_DISABLE_CLAUDE=1` forces that fallback.
 
 Voice bootstrap: `profile.yaml` starts with no voice samples and a neutral sharp
 register. Comments Sam approves or edits go into `drafting.voice_samples`; review
 the profile after two weeks of digests.
+
+### 5.1 Timer run emails TEMPLATE DRAFTs but SSH runs draft fine (systemd)
+
+A manual SSH run drafts with real `claude -p`, but the 07:30/17:30 timer run
+degrades. Almost always the service environment cannot see the claude binary or
+its login state: systemd's default PATH misses `~/.local/bin` (official
+installer) and nvm trees, and without the right `User=`/`HOME` the CLI cannot
+find its logged-in credentials. Since 2026-09-07 the failure reason is in the
+artifacts, so start by reading it:
+
+```bash
+cd /opt/social-feed-digest && git pull && .venv/bin/pip install -e .
+sudo systemctl start digest.service               # one test run right now
+journalctl -u digest.service -n 100 --no-pager | grep -iE 'claude|DEGRADED'
+```
+
+The log line `WARN: claude -p unavailable: ...` states the failure: binary not
+found on PATH (with the PATH the service actually saw), a non-zero exit with
+claude's own stderr (auth/login problems), a timeout, or empty output. The
+emailed digest matches: subject tagged `[DEGRADED: template drafts]`, footer
+line `DRAFTING DEGRADED: <reason>`.
+
+Reproduce exactly what the service sees (not your SSH shell):
+
+```bash
+SVC_USER=$(systemctl show -p User --value digest.service); SVC_USER=${SVC_USER:-root}
+echo "digest.service runs as: $SVC_USER"
+sudo systemd-run --uid="$SVC_USER" --pipe --wait \
+  bash -lc 'command -v claude || echo "claude NOT on PATH"; claude --version; claude -p "Reply with OK"'
+```
+
+- `claude NOT on PATH`: the binary sits outside systemd's default PATH.
+- Found but `claude -p` fails with a login/auth error: the service user's
+  `$HOME` does not hold the logged-in `~/.claude` state.
+
+Fix: edit the unit (`sudo systemctl edit --full digest.service`) and add under
+`[Service]` (replace `sam` with the real username; check with `echo $USER`):
+
+```ini
+[Service]
+User=sam
+Environment=PATH=/home/sam/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/sam
+```
+
+Unit-free alternative: put `DIGEST_CLAUDE_BIN=/home/sam/.local/bin/claude` in
+`.env` (absolute path from `command -v claude` as that user), and if the login
+state lives elsewhere also set `CLAUDE_CONFIG_DIR=/home/sam/.claude`.
+
+Apply and verify one full run:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl start digest.service --no-block
+journalctl -u digest.service -f    # expect: drafts via claude -p: N comments ...
+```
+
+Pass criteria: the log shows `drafts via claude -p`, no `WARN: claude -p
+unavailable` line; the new email has no `[DEGRADED: template drafts]` subject
+tag and no `DRAFTING DEGRADED` footer line. The 17:30 scheduled trigger uses the
+same unit, so nothing else to change.
 
 ## 6. Private digest page
 
@@ -277,7 +347,7 @@ One-time setup:
 | `xAI auth failed (401/403)` | bad or revoked `XAI_API_KEY` in `.env` |
 | `xAI billing error (402)` | out of credits at console.x.ai |
 | `rate-limited, backing off` (Reddit) | expected for unauthenticated RSS; the run retries with backoff. Fill `REDDIT_*` once approved, or ignore if 2 of 3 subs still yield 5+ topics |
-| `using template drafts` in the log | `claude` CLI missing or not logged in for the service user; install/login per section 5 |
+| `using template drafts` in the log / `[DEGRADED: template drafts]` subject | since 2026-09-07 the run footer prints the exact claude failure reason (`DRAFTING DEGRADED: ...`); diagnose and fix per section 5.1 (usually systemd PATH/HOME) |
 | `run cost $... exceeded budget` | tighten `x_search.candidate_topics`, per-call search caps in `digest/collect/xai_collector.py`, or raise `cost.per_run_budget_usd` |
 | `X following sync failed` | X API creds missing/invalid, `requests-oauthlib` not installed (`pip install -e '.[xapi]'`), or no credit left at console.x.com; the run continues with the cached list |
 | `refusing to serve an unprotected private page` | `DIGEST_PAGE_TOKEN` missing from `.env` |
