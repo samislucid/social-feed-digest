@@ -1,4 +1,11 @@
-"""Rendering: markdown artifact, standalone HTML page, and MIME email message."""
+"""Rendering: markdown artifact, standalone HTML page, and MIME email message.
+
+Channel-first layout, per Sam's 2026-09-07 review: X and LinkedIn sections are
+action-first (activity summary, posts getting attention, ready-to-post drafts,
+recommended comments/reposts/reshares); Reddit is capped at its best few posts;
+web/news is compact context. Every draft and comment is a suggestion Sam posts
+manually - the worker never posts anywhere.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,13 +14,17 @@ from email.message import EmailMessage
 from email.utils import formatdate
 from html import escape
 
-from .draft import TEMPLATE_MARKER, ShortlistEntry
-from .rank import Topic
+from .shape import Engagement, Notable, Section
 
 CHANNEL_NAMES = {"x": "X", "reddit": "Reddit", "linkedin": "LinkedIn", "web": "Web", "news": "News"}
 # Subject tag when drafts fell back, so a degraded run is visible in the inbox
 # before it is opened. The real failure reason lives in the run footer.
 DEGRADED_SUBJECT_TAG = "[DEGRADED: template drafts]"
+TEMPLATE_BANNER = (
+    "TEMPLATE DRAFT (claude CLI unavailable in this environment): placeholder content below"
+    " until the claude CLI is installed and authenticated (see RUNBOOK.md, section 5)."
+)
+MANUAL_POSTING_NOTE = "All drafts and comments are suggestions to post manually; the worker never posts."
 
 
 @dataclass
@@ -23,8 +34,7 @@ class Digest:
     run_tag: str
     generated_at: datetime
     profile_name: str
-    topics: list[Topic]
-    post_ideas: dict[str, list[str]]
+    sections: list[Section]
     draft_source: str
     collection: dict[str, int]
     cost: dict
@@ -32,12 +42,13 @@ class Digest:
     subject_prefix: str = "[Feed Digest]"
     duration_s: float = 0.0
     warnings: list[str] = field(default_factory=list)
-    shortlist: list[ShortlistEntry] = field(default_factory=list)
     claude_error: str = ""
 
     @property
     def subject(self) -> str:
-        s = f"{self.subject_prefix} {self.run_tag} - {len(self.topics)} topics"
+        posts = sum(len(s.notable) for s in self.sections)
+        drafts = sum(len(s.drafts) for s in self.sections)
+        s = f"{self.subject_prefix} {self.run_tag} - {posts} posts, {drafts} drafts"
         if self.draft_source == "template-fallback":
             s += f" {DEGRADED_SUBJECT_TAG}"
         return s
@@ -47,8 +58,80 @@ def channel_label(channel: str) -> str:
     return CHANNEL_NAMES.get(channel, channel)
 
 
-def topic_channels(topic: Topic) -> str:
-    return ", ".join(channel_label(c) for c in topic.channel_labels)
+def _section_title(section: Section) -> str:
+    if section.channel == "web":
+        return "Also spotted (web and news)"
+    if section.channel == "reddit" and section.intro:
+        return f"Reddit ({section.intro})"
+    return channel_label(section.channel)
+
+
+def _who(author: str) -> str:
+    return f" - {author}" if author.strip() else ""
+
+
+def _engagement_line(entry: Engagement) -> str:
+    target = f'"{entry.title}" ({entry.url})'
+    if entry.action == "retweet":
+        return f"- Repost {target}: {entry.comment}"
+    if entry.action == "reshare":
+        return f"- Reshare {target}: {entry.comment}"
+    return f"- Comment on {target}: {entry.comment}"
+
+
+def _render_section_md(lines: list[str], section: Section) -> None:
+    lines.append("")
+    lines.append(f"## {_section_title(section)}")
+    if not section.candidates:
+        lines.append("")
+        lines.append(
+            section.empty_note
+            or f"Nothing collected for this channel this run."
+        )
+        return
+
+    if section.channel in ("x", "linkedin"):
+        lines.append("")
+        lines.append(f"### What happened on {channel_label(section.channel)}")
+        lines.append("")
+        lines.append(section.summary or _section_title(section))
+        if section.notable:
+            lines.append("")
+            lines.append("### Posts getting attention")
+            for n in section.notable:
+                lines.append("")
+                lines.append(f"{n.index}. {n.title}{_who(n.author)}")
+                lines.append(f"   Post: {n.url}")
+                if n.why:
+                    lines.append(f"   Why it matters: {n.why}")
+        if section.drafts:
+            lines.append("")
+            lines.append("### Drafts for your account (post manually)")
+            for i, draft in enumerate(section.drafts, 1):
+                lines.append("")
+                lines.append(f"{i}. {draft}")
+        if section.engagements:
+            verb = "reposts" if section.channel == "x" else "reshares"
+            lines.append("")
+            lines.append(f"### Comments and {verb} worth making")
+            for entry in section.engagements:
+                lines.append(_engagement_line(entry))
+        return
+
+    # Reddit and web/news: a capped, ranked post list with suggested comments.
+    if section.summary:
+        lines.append("")
+        lines.append(section.summary)
+    for n in section.notable:
+        lines.append("")
+        lines.append(f"{n.index}. {n.title}{_who(n.author)}")
+        lines.append(f"   Post: {n.url}")
+        if n.why:
+            lines.append(f"   Why hot: {n.why}")
+        if section.channel == "reddit":
+            match = next((e for e in section.engagements if e.index == n.index), None)
+            if match:
+                lines.append(f"   Suggested comment: {match.comment}")
 
 
 def render_markdown(digest: Digest) -> str:
@@ -61,41 +144,17 @@ def render_markdown(digest: Digest) -> str:
         f"est. external cost: ${digest.cost.get('total_usd', 0.0):.4f}_"
     )
     lines.append("")
+    lines.append(f"_{MANUAL_POSTING_NOTE}_")
     if digest.draft_source == "template-fallback":
         lines.append("")
-        lines.append(f"> {TEMPLATE_MARKER}: comments and post ideas below are placeholders until")
-        lines.append("> the claude CLI is installed and authenticated (see RUNBOOK.md, section 5).")
-    lines.append("")
-    lines.append(f"## Topics ({len(digest.topics)}, ranked)")
-    for i, topic in enumerate(digest.topics, 1):
-        lines.append("")
-        lines.append(f"### {i}. {topic.title}")
-        lines.append(f"- Why hot: {topic.why_hot}")
-        lines.append(f"- Niche: {topic.niche or 'unclassified'} · Channels: {topic_channels(topic)}")
-        lines.append(f"- Source: {topic.source_url}")
-        lines.append(f"- Quiet share: {topic.quiet_share_url}")
-        lines.append(f"- Suggested comment: {topic.comment}")
-    if digest.shortlist:
-        lines.append("")
-        lines.append("## Engagement shortlist")
-        for i, entry in enumerate(digest.shortlist, 1):
-            lines.append("")
-            lines.append(f"### {i}. {entry.title}")
-            lines.append(f"- Fit: {entry.why}")
-            lines.append(f"- Post: {entry.url}")
-            lines.append(f"- Ready-to-post comment: {entry.comment}")
-    lines.append("")
-    lines.append("## Post ideas")
-    for channel, ideas in digest.post_ideas.items():
-        lines.append("")
-        lines.append(f"### {channel_label(channel)} ({len(ideas)})")
-        for j, idea in enumerate(ideas, 1):
-            lines.append(f"{j}. {idea}")
+        lines.append(f"> {TEMPLATE_BANNER}")
+    for section in digest.sections:
+        _render_section_md(lines, section)
     lines.append("")
     lines.append("## Run footer")
     searches = digest.cost.get("search_tool_calls", 0)
     lines.append(
-        f"- Collection: " + ", ".join(f"{channel_label(k)}: {v}" for k, v in sorted(digest.collection.items()))
+        "- Collection: " + ", ".join(f"{channel_label(k)}: {v}" for k, v in sorted(digest.collection.items()))
     )
     lines.append(f"- xAI Live Search tool calls: {searches} · est. cost: ${digest.cost.get('total_usd', 0.0):.4f} "
                  f"(budget ${digest.cost.get('budget_usd', 0.25):.2f})")
@@ -122,6 +181,16 @@ footer{color:#555;font-size:.85rem;margin-top:24px;border-top:1px solid #ddd;pad
 """
 
 
+def _comment_html(text: str) -> str:
+    if text.startswith("[TEMPLATE DRAFT"):
+        return f'<span class="template">{escape("[TEMPLATE DRAFT]")}</span>' + escape(text.split("]", 1)[-1])
+    return escape(text)
+
+
+def _template_marked(text: str) -> bool:
+    return text.startswith("[TEMPLATE DRAFT")
+
+
 def render_html(digest: Digest) -> str:
     e = escape
     parts: list[str] = [
@@ -134,40 +203,59 @@ def render_html(digest: Digest) -> str:
         f'<p class="meta">{e(digest.generated_at.strftime("%Y-%m-%d %H:%M %Z"))} · '
         f"profile: {e(digest.profile_name)} · drafting: {e(digest.draft_source)} · "
         f'est. external cost: ${digest.cost.get("total_usd", 0.0):.4f}</p>',
-        "<h2>Topics (ranked)</h2>",
+        f'<p class="meta">{e(MANUAL_POSTING_NOTE)}</p>',
     ]
-    for i, topic in enumerate(digest.topics, 1):
-        comment_html = e(topic.comment)
-        if topic.comment.startswith("[TEMPLATE DRAFT"):
-            comment_html = f'<span class="template">{e("[TEMPLATE DRAFT]")}</span>' + e(topic.comment.split("]", 1)[-1])
-        parts.append(
-            f'<div class="topic"><h3>{i}. {e(topic.title)}</h3>'
-            f'<p>{e(topic.why_hot)}</p>'
-            f'<p class="meta">Niche: {e(topic.niche or "unclassified")} · Channels: {e(topic_channels(topic))}</p>'
-            f'<p class="meta">Source: <a href="{e(topic.source_url)}">{e(topic.source_url)}</a></p>'
-            f'<p class="meta">Quiet share: <a href="{e(topic.quiet_share_url)}">{e(topic.quiet_share_url)}</a></p>'
-            f'<div class="comment">{comment_html}</div></div>'
-        )
-    if digest.shortlist:
-        parts.append("<h2>Engagement shortlist</h2>")
-        for i, entry in enumerate(digest.shortlist, 1):
-            comment_html = e(entry.comment)
-            if entry.comment.startswith("[TEMPLATE DRAFT"):
-                comment_html = (
-                    f'<span class="template">{e("[TEMPLATE DRAFT]")}</span>' + e(entry.comment.split("]", 1)[-1])
-                )
+    if digest.draft_source == "template-fallback":
+        parts.append(f'<p class="template">{e(TEMPLATE_BANNER)}</p>')
+
+    for section in digest.sections:
+        parts.append(f"<h2>{e(_section_title(section))}</h2>")
+        if not section.candidates:
+            parts.append(f"<p>{e(section.empty_note or 'Nothing collected for this channel this run.')}</p>")
+            continue
+        if section.channel in ("x", "linkedin"):
+            parts.append(f"<p>{e(section.summary)}</p>")
+            if section.notable:
+                parts.append("<h3>Posts getting attention</h3>")
+                for n in section.notable:
+                    who = f" - {n.author}" if n.author.strip() else ""
+                    why = f'<p>{e("Why it matters: " + n.why)}</p>' if n.why else ""
+                    parts.append(
+                        f'<div class="topic"><h3>{n.index}. {e(n.title)}{e(who)}</h3>'
+                        f'<p class="meta">Post: <a href="{e(n.url)}">{e(n.url)}</a></p>{why}</div>'
+                    )
+            if section.drafts:
+                parts.append("<h3>Drafts for your account (post manually)</h3>")
+                for draft in section.drafts:
+                    marked = _template_marked(draft)
+                    body = _comment_html(draft)
+                    cls = "comment template" if marked else "comment"
+                    parts.append(f'<div class="{cls}">{body}</div>')
+            if section.engagements:
+                verb = "reposts" if section.channel == "x" else "reshares"
+                parts.append(f"<h3>Comments and {e(verb)} worth making</h3><ul>")
+                for entry in section.engagements:
+                    parts.append(
+                        f'<li>{e(_engagement_line(entry)[2:])}</li>'  # strip leading "- "
+                    )
+                parts.append("</ul>")
+            continue
+
+        if section.summary:
+            parts.append(f"<p>{e(section.summary)}</p>")
+        for n in section.notable:
+            who = f" - {n.author}" if n.author.strip() else ""
+            why = f'<p>{e("Why hot: " + n.why)}</p>' if n.why else ""
+            comment = ""
+            if section.channel == "reddit":
+                match = next((en for en in section.engagements if en.index == n.index), None)
+                if match:
+                    comment = f'<div class="comment">{_comment_html("Suggested comment: " + match.comment)}</div>'
             parts.append(
-                f'<div class="topic"><h3>{i}. {e(entry.title)}</h3>'
-                f'<p class="meta">Fit: {e(entry.why)}</p>'
-                f'<p class="meta">Post: <a href="{e(entry.url)}">{e(entry.url)}</a></p>'
-                f'<div class="comment">{comment_html}</div></div>'
+                f'<div class="topic"><h3>{n.index}. {e(n.title)}{e(who)}</h3>'
+                f'<p class="meta">Post: <a href="{e(n.url)}">{e(n.url)}</a></p>{why}{comment}</div>'
             )
-    parts.append("<h2>Post ideas</h2>")
-    for channel, ideas in digest.post_ideas.items():
-        parts.append(f"<h3>{e(channel_label(channel))}</h3><ul>")
-        for idea in ideas:
-            parts.append(f"<li>{e(idea)}</li>")
-        parts.append("</ul>")
+
     parts.append("<footer>")
     parts.append(
         f'Collection: {e(", ".join(f"{channel_label(k)}: {v}" for k, v in sorted(digest.collection.items())))} · '

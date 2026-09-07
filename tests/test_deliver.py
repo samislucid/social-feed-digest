@@ -11,18 +11,27 @@ from digest.deliver import prune, run_tag_for, send_email, store_digest
 from digest.items import Item
 from digest.rank import build_topics
 from digest.render import Digest, build_email, render_html, render_markdown
+from digest.shape import Engagement, Notable, shape_sections
 
 
 def _digest(base_profile, run_tag: str = "2026-09-07_0930") -> Digest:
     items = [Item(channel="x", title="Open-weights model tops evals", url="https://x.com/u/status/1")]
     topics = build_topics(items, base_profile)
-    topics[0].comment = "c"
+    sections = shape_sections(topics, base_profile)
+    x = next(s for s in sections if s.channel == "x")
+    x.summary = "One X post on your topics."
+    x.notable = [
+        Notable(index=1, title="Open-weights model tops evals", url="https://x.com/u/status/1", author="@modelwatcher", why="Beats closed models on evals.")
+    ]
+    x.drafts = ["Draft one.", "Draft two."]
+    x.engagements = [
+        Engagement(index=1, title="Open-weights model tops evals", url="https://x.com/u/status/1", author="@modelwatcher", action="comment", comment="Numbers check out.")
+    ]
     return Digest(
         run_tag=run_tag,
         generated_at=datetime(2026, 9, 7, 16, 30, tzinfo=timezone.utc),
         profile_name=base_profile["name"],
-        topics=topics,
-        post_ideas={"x": ["a", "b", "c"], "linkedin": ["d", "e", "f"], "reddit": ["g", "h", "i"]},
+        sections=sections,
         draft_source="template-fallback",
         collection={"x": 1},
         cost={"search_tool_calls": 2, "total_usd": 0.01, "budget_usd": 0.25, "calls": []},
@@ -33,6 +42,18 @@ def _digest(base_profile, run_tag: str = "2026-09-07_0930") -> Digest:
 def test_run_tag_is_pacific_local():
     # 2026-09-07 02:30 UTC == 2026-09-06 19:30 Pacific (PDT, UTC-7)
     assert run_tag_for(datetime(2026, 9, 7, 2, 30, tzinfo=timezone.utc)) == "2026-09-06_1930"
+
+
+def test_digest_json_serializes_channel_sections(base_profile, settings):
+    digest = _digest(base_profile)
+    data = deliver.digest_to_dict(digest)
+    assert data["sections"][0]["channel"] == "x"
+    assert data["sections"][0]["drafts"] == ["Draft one.", "Draft two."]
+    assert data["sections"][0]["engagements"][0]["action"] == "comment"
+    assert data["sections"][0]["notable"][0]["url"] == "https://x.com/u/status/1"
+    assert "post_ideas" not in data
+    assert "shortlist" not in data
+    assert "topics" not in data
 
 
 def test_store_digest_writes_all_artifacts(base_profile, settings):

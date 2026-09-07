@@ -9,6 +9,11 @@ A claude failure is never silent: `_run_claude` returns the real reason (binary
 missing from the service PATH, non-zero exit with claude's own stderr, timeout,
 empty or unparsable output) and `draft_digest` carries it out as `claude_error`
 so the email subject and run footer can explain a degraded digest.
+
+The drafting target is the channel-first shape (shape.py): per channel an
+activity summary, notable posts, ready-to-post drafts for Sam's own account,
+and engagement suggestions. Sam posts everything manually; the worker never
+posts anywhere.
 """
 from __future__ import annotations
 
@@ -16,15 +21,23 @@ import json
 import os
 import shutil
 import subprocess
-from dataclasses import dataclass
 
 from .config import Settings
+from .shape import Engagement, Notable, Section, topic_author
 from .rank import Topic
 
 CLAUDE_TIMEOUT_S = 240
 TEMPLATE_MARKER = "TEMPLATE DRAFT (claude CLI unavailable in this environment)"
 SOURCE_TEXT_LIMIT = 420  # chars of the post's own text given to the drafter
 REASON_LIMIT = 300  # chars of failure detail kept for the run footer
+
+_NOTABLE_MAX = 4  # "a few specific tweets/posts getting attention"
+_DRAFT_MAX = 3  # 2-3 ready-to-post drafts per channel
+_DRAFT_COUNT = 2  # template fallback produces this many drafts per channel
+_ENGAGEMENT_MAX = 3
+
+# Actions the worker may suggest per channel; Sam executes them manually.
+_ACTIONS = {"x": ("comment", "retweet"), "linkedin": ("comment", "reshare"), "reddit": ("comment",)}
 
 _X_ANGLES = [
     "Contrarian take worth posting",
@@ -40,24 +53,6 @@ _LINKEDIN_ANGLES = [
     "The tradeoff nobody mentions",
     "What to do this quarter about it",
 ]
-_REDDIT_ANGLES = [
-    "Discussion starter: what does this change for your setup",
-    "Who here has hit this in practice",
-    "Worth testing this week",
-    "The detail most comments will miss",
-    "Ask the subreddit what they would do",
-]
-
-
-@dataclass
-class ShortlistEntry:
-    """One specific post worth commenting on, with a ready-to-post comment."""
-
-    index: int  # 1-based topic index the entry refers to
-    title: str
-    url: str
-    why: str  # comment-fit reason, not raw heat
-    comment: str
 
 
 def _extract_json(text: str) -> dict | None:
@@ -92,10 +87,6 @@ def _source_text(topic: Topic) -> str:
     return text
 
 
-def _shortlist_size(profile: dict) -> int:
-    return int((profile.get("engagement") or {}).get("shortlist_size", 3))
-
-
 def _guidance_strings(entries: object) -> list[str]:
     """Flatten free-form profile guidance (dos/donts/voice_samples) to prompt strings.
 
@@ -117,70 +108,116 @@ def _guidance_strings(entries: object) -> list[str]:
     return out
 
 
-def _build_prompt(topics: list[Topic], profile: dict, per_channel: int, channels: list[str]) -> str:
-    d = profile.get("drafting") or {}
-    bs = profile.get("brightstack") or {}
-    topic_lines = []
-    for i, topic in enumerate(topics, 1):
-        src = _source_text(topic)
-        text_part = f' | post text: "{src}"' if src else ""
-        topic_lines.append(
-            f"{i}. {topic.title} | why hot: {topic.why_hot} | source: {topic.source_url} | "
-            f"niches: {topic.niche} | channels: {', '.join(topic.channel_labels)}{text_part}"
-        )
-    samples = "\n".join(f"- {s}" for s in _guidance_strings(d.get("voice_samples"))) or "- (none yet; neutral sharp register)"
-    ideas_example = ", ".join(f'"{c}": ["..."]' for c in channels)
-    shortlist_size = _shortlist_size(profile)
+def _brightstack_block(profile: dict) -> str:
+    """The Brightstack positioning/voice block, verbatim from profile.yaml.
 
-    brightstack = ""
-    if bs:
-        voice = bs.get("voice") or {}
-        block = []
-        if bs.get("one_liner"):
-            block.append(f"- What it is: {bs['one_liner']}")
-        if bs.get("audience"):
-            block.append(f"- Who it is for: {bs['audience']}")
-        if bs.get("flows"):
-            block.append(f"- Core flows: {', '.join(str(f) for f in bs['flows'])}")
-        if voice.get("when_to_mention"):
-            block.append(f"- Mention only when: {voice['when_to_mention']}")
-        if voice.get("register"):
-            block.append(f"- Voice when mentioning it: {voice['register']}")
-        if voice.get("never"):
-            block.append(f"- Never: {voice['never']}")
-        if block:
-            brightstack = (
-                "\nBrightstack context (Sam's product; use sparingly, only where it genuinely fits):\n"
-                + "\n".join(block)
-                + "\n"
-            )
+    Must keep reaching the prompt: it is what keeps product mentions relevant
+    and rare instead of promo.
+    """
+    bs = profile.get("brightstack") or {}
+    if not bs:
+        return ""
+    voice = bs.get("voice") or {}
+    block = []
+    if bs.get("one_liner"):
+        block.append(f"- What it is: {bs['one_liner']}")
+    if bs.get("audience"):
+        block.append(f"- Who it is for: {bs['audience']}")
+    if bs.get("flows"):
+        block.append(f"- Core flows: {', '.join(str(f) for f in bs['flows'])}")
+    if voice.get("when_to_mention"):
+        block.append(f"- Mention only when: {voice['when_to_mention']}")
+    if voice.get("register"):
+        block.append(f"- Voice when mentioning it: {voice['register']}")
+    if voice.get("never"):
+        block.append(f"- Never: {voice['never']}")
+    if not block:
+        return ""
+    return (
+        "\nBrightstack context (Sam's product; use sparingly, only where it genuinely fits):\n"
+        + "\n".join(block)
+        + "\n"
+    )
+
+
+_CHANNEL_LABELS = {"x": "X posts", "linkedin": "LinkedIn posts", "reddit": "Reddit threads"}
+
+
+def _candidate_line(i: int, topic: Topic) -> str:
+    src = _source_text(topic)
+    text_part = f' | post text: "{src}"' if src else ""
+    who = topic_author(topic)
+    who_part = f"author: {who} | " if who else ""
+    return (
+        f"{i}. {topic.title} | {who_part}url: {topic.source_url} | "
+        f"niches: {topic.niche} | why hot: {topic.why_hot}{text_part}"
+    )
+
+
+def _build_prompt(sections: list[Section], profile: dict) -> str:
+    d = profile.get("drafting") or {}
+    samples = "\n".join(f"- {s}" for s in _guidance_strings(d.get("voice_samples"))) or (
+        "- (none yet; neutral sharp register)"
+    )
+    by_channel = {s.channel: s for s in sections}
+
+    blocks: list[str] = []
+    for channel in ("x", "linkedin", "reddit"):
+        section = by_channel.get(channel)
+        candidates = section.candidates if section else []
+        label = _CHANNEL_LABELS[channel]
+        if candidates:
+            lines = "\n".join(_candidate_line(i, t) for i, t in enumerate(candidates, 1))
+            blocks.append(f"{label}:\n{lines}")
+        else:
+            blocks.append(f"{label}: (none this run)")
+    web = by_channel.get("web")
+    if web and web.candidates:
+        wlines = "\n".join(
+            f"{i}. {t.title} | url: {t.source_url} | why hot: {t.why_hot}"
+            for i, t in enumerate(web.candidates, 1)
+        )
+        blocks.append(
+            "Background from web/news (context for drafts; not a posting surface):\n" + wlines
+        )
+    inputs = "\n\n".join(blocks)
 
     return (
-        "You ghostwrite social media engagement for Sam.\n"
+        "You ghostwrite Sam's private social feed digest. The digest is channel-first:\n"
+        "per channel it ships an activity summary, the posts getting attention,\n"
+        "ready-to-post drafts for Sam's own account, and recommended engagement.\n"
         f"Tone: {d.get('tone', 'neutral, sharp, specific')}.\n"
         f"Audience: {profile.get('audience', 'AI builders, investors, sports and markets watchers')}.\n"
         "Do: " + "; ".join(_guidance_strings(d.get("dos"))) + "\n"
         "Don't: " + "; ".join(_guidance_strings(d.get("donts"))) + "\n"
         "Voice samples:\n" + samples + "\n"
-        + brightstack
+        + _brightstack_block(profile)
         + "\n"
-        "Topics (ranked):\n" + "\n".join(topic_lines) + "\n\n"
-        "1) Suggested comment per topic: the actual comment Sam could post as a reply on\n"
-        "   that specific thread. Ground it in the post's own text: build on or answer a\n"
-        "   concrete claim from it, and add the practitioner angle it misses. 1-3\n"
-        "   sentences, max 300 chars, no hashtags, no emoji, never generic praise.\n"
-        f"2) Post ideas: {per_channel} per channel ({', '.join(channels)}). Every idea must be\n"
-        "   original synthesis of a theme that shows up across at least two of the topics\n"
-        "   above - a fresh take Sam could write. Never restate or retitle a single post,\n"
-        "   never propose resharing a link, never 'thoughts on <title>'.\n"
-        f"3) Engagement shortlist: the {shortlist_size} topics where a comment from Sam has the\n"
-        "   best fit - AI topics where a practitioner reply with light, relevant Brightstack\n"
-        "   context lands. Pick by comment-fit, not raw heat. For each: a one-line 'why' and\n"
-        "   the ready-to-post comment.\n"
-        "Return STRICT JSON only, no prose:\n"
-        '{"comments": [{"index": 1, "comment": "..."}], '
-        '"post_ideas": {' + ideas_example + "}, "
-        '"shortlist": [{"index": 1, "why": "...", "comment": "..."}]}'
+        f"{inputs}\n\n"
+        "TASK\n"
+        "Return JSON only (no prose, no code fence) exactly in this schema:\n"
+        '{"x": {"summary": "...", "notable": [{"index": 1, "why": "..."}], '
+        '"drafts": ["..."], "engagements": [{"index": 1, "action": "comment", "comment": "..."}]}, '
+        '"linkedin": {"summary": "...", "notable": [{"index": 1, "why": "..."}], '
+        '"drafts": ["..."], "engagements": [{"index": 1, "action": "comment", "comment": "..."}]}, '
+        '"reddit": {"summary": "...", "engagements": [{"index": 1, "comment": "..."}]}}\n\n'
+        "Per channel:\n"
+        "- summary: 1-3 sentences on what happened in this channel across the listed posts.\n"
+        "- notable (X and LinkedIn only): 2-4 specific posts from the list that are getting\n"
+        "  attention, each with a concrete 'why it matters' grounded in the post's own text.\n"
+        "- drafts: 2-3 ready-to-post posts for Sam's own account. Original synthesis drawing\n"
+        "  on two or more of this run's posts; never a retitle of one article and never a\n"
+        "  link share. X drafts <= 280 characters each; LinkedIn drafts 60-120 words.\n"
+        "- engagements: 2-3 recommended manual actions on specific listed posts. Allowed\n"
+        "  actions: X 'comment' or 'retweet'; LinkedIn 'comment' or 'reshare'; Reddit\n"
+        "  'comment' only. Comments must be real, postable replies to that specific thread,\n"
+        "  grounded in the post's own text. For 'retweet'/'reshare', the comment is one\n"
+        "  sentence on why the repost is worth Sam's name.\n"
+        "- 'index' must reference the numbered list of that channel; links and authors are\n"
+        "  attached from source data and never invented.\n"
+        "- If a channel list says (none this run), return an empty summary and empty lists\n"
+        "  for it.\n"
+        "\nSam posts everything manually. You never post; you only draft."
     )
 
 
@@ -217,150 +254,200 @@ def _template_comment(topic: Topic) -> str:
     return f"[{TEMPLATE_MARKER}] Worth engaging: {topic.title.strip()} - {topic.why_hot.strip()}"
 
 
-def _template_post_ideas(topics: list[Topic], per_channel: int, channels: list[str]) -> dict[str, list[str]]:
-    """Placeholder ideas shaped like the real thing: cross-topic synthesis angles.
+def _template_summary(section: Section) -> str:
+    label = {"x": "X", "linkedin": "LinkedIn", "reddit": "Reddit"}.get(section.channel, section.channel)
+    if not section.candidates:
+        return ""
+    lead = section.candidates[0].title.strip()
+    unit = "thread" if section.channel == "reddit" else "post"
+    n = len(section.candidates)
+    return f"{n} {label} {unit}{'s' if n != 1 else ''} on your topics this run; loudest: \"{lead}\"."
 
-    They are still TEMPLATE-marked placeholders, but they point at a theme shared
-    by two topics rather than retitling one post, so the digest shape stays honest.
-    """
-    ideas: dict[str, list[str]] = {}
-    angles = {"x": _X_ANGLES, "linkedin": _LINKEDIN_ANGLES, "reddit": _REDDIT_ANGLES}
-    for channel in channels:
-        channel_angles = angles.get(channel, angles["x"])
-        out: list[str] = []
-        for i in range(per_channel):
-            angle = channel_angles[i % len(channel_angles)]
-            a = topics[i % len(topics)] if topics else None
-            b = topics[(i + 1) % len(topics)] if len(topics) > 1 else None
-            if a and b:
-                out.append(
-                    f"[{TEMPLATE_MARKER}] {angle}: synthesize the theme shared by "
-                    f'"{a.title.strip()}" and "{b.title.strip()}"'
+
+def _template_drafts(section: Section) -> list[str]:
+    angles = _X_ANGLES if section.channel == "x" else _LINKEDIN_ANGLES
+    cands = section.candidates
+    out: list[str] = []
+    for i in range(min(_DRAFT_COUNT, len(cands)) if cands else 0):
+        angle = angles[i % len(angles)]
+        a = cands[i % len(cands)]
+        b = cands[(i + 1) % len(cands)] if len(cands) > 1 else None
+        if b and b is not a:
+            hint = (
+                f"[{TEMPLATE_MARKER}] {angle}: connect \"{a.title.strip()}\" and "
+                f"\"{b.title.strip()}\" into one post"
+            )
+        else:  # single candidate: name the angle, never fake a synthesis
+            hint = f"[{TEMPLATE_MARKER}] {angle}: build on \"{a.title.strip()}\" across this run's sources"
+        out.append(hint)
+    return out
+
+
+def _candidate_at(section: Section, index: object) -> Topic | None:
+    try:
+        idx = int(index)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if 1 <= idx <= len(section.candidates):
+        return section.candidates[idx - 1]
+    return None
+
+
+def _fill_from_claude(sections: list[Section], parsed: dict) -> list[str]:
+    """Apply parsed claude JSON to the sections; return human-readable gaps."""
+    gaps: list[str] = []
+    for section in sections:
+        channel = section.channel
+        if not section.candidates:
+            continue  # empty channel this run: the visible note renders, no gap
+        data = parsed.get(channel)
+        data = data if isinstance(data, dict) else {}
+
+        summary = str(data.get("summary") or "").strip()
+        if summary:
+            section.summary = summary
+        else:
+            gaps.append(f"{channel}: no summary")
+
+        if channel in ("x", "linkedin"):
+            notable: list[Notable] = []
+            for entry in (data.get("notable") or [])[:_NOTABLE_MAX]:
+                if not isinstance(entry, dict):
+                    continue
+                topic = _candidate_at(section, entry.get("index"))
+                if topic is None:
+                    continue
+                notable.append(
+                    Notable(
+                        index=int(entry["index"]),
+                        title=topic.title,
+                        url=topic.source_url,
+                        author=topic_author(topic),
+                        why=str(entry.get("why") or "").strip(),
+                    )
                 )
-            elif a:  # single topic: name the angle, never fake a synthesis
-                out.append(f'[{TEMPLATE_MARKER}] {angle}: build on "{a.title.strip()}" across this run\'s sources')
-            else:  # pragma: no cover - runner guarantees at least one topic or skips drafting
-                out.append(f"[{TEMPLATE_MARKER}] {angle}")
-        ideas[channel] = out
-    return ideas
+            if notable:
+                section.notable = notable
+            else:
+                gaps.append(f"{channel}: no notable picks")
+
+            drafts = [
+                str(x).strip()
+                for x in (data.get("drafts") or [])
+                if isinstance(x, str) and str(x).strip()
+            ][:_DRAFT_MAX]
+            if drafts:
+                section.drafts = drafts
+            else:
+                gaps.append(f"{channel}: no drafts")
+
+        engagements: list[Engagement] = []
+        allowed = _ACTIONS.get(channel, ("comment",))
+        for entry in (data.get("engagements") or []):
+            if not isinstance(entry, dict):
+                continue
+            topic = _candidate_at(section, entry.get("index"))
+            if topic is None:
+                continue
+            action = str(entry.get("action") or "comment").strip().lower()
+            if action not in allowed:
+                continue
+            comment = str(entry.get("comment") or "").strip()
+            if not comment:
+                continue
+            engagements.append(
+                Engagement(
+                    index=int(entry["index"]),
+                    title=topic.title,
+                    url=topic.source_url,
+                    author=topic_author(topic),
+                    action=action,
+                    comment=comment,
+                )
+            )
+            if len(engagements) >= _ENGAGEMENT_MAX:
+                break
+        if engagements:
+            section.engagements = engagements
+        else:
+            gaps.append(f"{channel}: no engagement suggestions")
+    return gaps
 
 
-def _fallback_shortlist(topics: list[Topic], size: int) -> list[ShortlistEntry]:
-    """Deterministic comment-fit pick for template runs: AI-fit topics first, then rank order."""
-    def fit(pair: tuple[int, Topic]) -> tuple[int, int]:
-        idx, topic = pair
-        return (0 if (topic.niche or "").startswith("ai") else 1, idx)
+def _fill_template(sections: list[Section]) -> None:
+    """Deterministic fallback content for every piece claude did not provide."""
+    for section in sections:
+        if section.channel == "web" or not section.candidates:
+            continue  # web post lists are shaped deterministically already
+        if not section.summary.strip():
+            section.summary = _template_summary(section)
+        if section.channel in ("x", "linkedin") and not section.notable:
+            section.notable = [
+                Notable(
+                    index=i,
+                    title=t.title,
+                    url=t.source_url,
+                    author=topic_author(t),
+                    why=t.why_hot,
+                )
+                for i, t in enumerate(section.candidates[:3], 1)
+            ]
+        if section.channel in ("x", "linkedin") and not section.drafts:
+            section.drafts = _template_drafts(section)
+        if not section.engagements:
+            top = section.candidates[0]
+            section.engagements = [
+                Engagement(
+                    index=1,
+                    title=top.title,
+                    url=top.source_url,
+                    author=topic_author(top),
+                    action="comment",
+                    comment=_template_comment(top),
+                )
+            ]
 
-    picked = sorted(sorted(enumerate(topics, 1), key=fit)[: max(size, 0)])
-    return [
-        ShortlistEntry(
-            index=idx,
-            title=topic.title,
-            url=topic.source_url,
-            why="AI topic with direct Brightstack fit (template run; not model-scored)",
-            comment=topic.comment,
-        )
-        for idx, topic in picked
-    ]
 
+def draft_digest(sections: list[Section], profile: dict, settings: Settings, log=print) -> dict:
+    """Fill channel sections with summaries, drafts, and engagement suggestions.
 
-def draft_digest(topics: list[Topic], profile: dict, settings: Settings, log=print) -> dict:
-    """Attach suggested comments to topics and produce post ideas + the shortlist.
-
-    Returns {"source": "claude" | "template-fallback", "post_ideas": {...},
-    "claude_error": str | None, "shortlist": [ShortlistEntry]} and fills
-    topic.comment in place.
+    Returns {"source": "claude" | "template-fallback", "claude_error": str | None}.
+    Sections are filled in place. claude -p is the voice; any failure or gap is
+    patched with clearly-marked template content so the run degrades instead of
+    dying, and the real reason surfaces in the run footer.
     """
-    post_cfg = profile.get("post_ideas") or {}
-    per_channel = int(post_cfg.get("per_channel", 4))
-    channels = list(post_cfg.get("channels") or ["x", "linkedin", "reddit"])
-    shortlist_size = _shortlist_size(profile)
-
-    result: dict = {"source": "claude", "post_ideas": {}, "claude_error": None, "shortlist": []}
+    result: dict = {"source": "claude", "claude_error": None}
     parsed = None
-    if topics and not settings.disable_claude:
+    if any(s.candidates for s in sections) and not settings.disable_claude:
+        prompt = None
         try:
-            prompt = _build_prompt(topics, profile, per_channel, channels)
+            prompt = _build_prompt(sections, profile)
         except Exception as exc:  # noqa: BLE001 - a profile edit that breaks the
             # prompt must degrade the run, never kill it: the digest still ships
             # with DRAFTING DEGRADED and the real reason in the email footer.
             result["claude_error"] = f"prompt build failed from profile: {exc}"
             log(f"WARN: claude -p unavailable: {result['claude_error']}")
-        else:
-            out, reason = _run_claude(prompt, settings)
-            if reason:
-                result["claude_error"] = reason
-                log(f"WARN: claude -p unavailable: {reason}")
-            parsed = _extract_json(out) if out else None
-            if out and parsed is None:
-                result["claude_error"] = "claude output was not parseable JSON"
-    elif settings.disable_claude:
-        result["claude_error"] = "drafting disabled (DIGEST_DISABLE_CLAUDE=1)"
+        if prompt is not None:
+            out, err = _run_claude(prompt, settings)
+            if err:
+                result["claude_error"] = err
+                log(f"WARN: claude -p unavailable: {err}")
+            else:
+                parsed = _extract_json(out or "")
+                if parsed is None:
+                    result["claude_error"] = "claude output was not parsable JSON"
 
-    comments_by_index: dict[int, str] = {}
-    ideas: dict[str, list[str]] = {}
-    if parsed:
-        for entry in parsed.get("comments") or []:
-            try:
-                idx = int(entry.get("index"))
-                comment = str(entry.get("comment") or "").strip()
-            except (TypeError, ValueError):
-                continue
-            if comment:
-                comments_by_index[idx] = comment
-        raw_ideas = parsed.get("post_ideas") or {}
-        for channel in channels:
-            got = [str(s).strip() for s in raw_ideas.get(channel) or [] if str(s).strip()]
-            if got:
-                ideas[channel] = got[:5]
-
-    used_fallback = False
-    for i, topic in enumerate(topics, 1):
-        comment = comments_by_index.get(i)
-        if not comment:
-            used_fallback = True
-            comment = _template_comment(topic)
-        topic.comment = comment
-
-    missing_channels = [c for c in channels if c not in ideas or len(ideas[c]) < 3]
-    if missing_channels:
-        used_fallback = True
-        ideas.update(_template_post_ideas(topics, per_channel, missing_channels))
-
-    # Engagement shortlist: model entries mapped back to their topics, with a
-    # deterministic AI-fit fallback when claude gave none.
-    by_index = {i: t for i, t in enumerate(topics, 1)}
-    shortlist: list[ShortlistEntry] = []
-    for entry in (parsed or {}).get("shortlist") or []:
-        try:
-            idx = int(entry.get("index"))
-        except (TypeError, ValueError):
-            continue
-        topic = by_index.get(idx)
-        comment = str(entry.get("comment") or "").strip()
-        if topic and comment:
-            shortlist.append(
-                ShortlistEntry(
-                    index=idx,
-                    title=topic.title,
-                    url=topic.source_url,
-                    why=str(entry.get("why") or "").strip() or "high comment-fit",
-                    comment=comment,
-                )
-            )
-    if not shortlist:
-        shortlist = _fallback_shortlist(topics, shortlist_size)
-    if shortlist_size > 0:
-        shortlist = shortlist[:shortlist_size]
-    result["shortlist"] = shortlist
-
-    result["post_ideas"] = ideas
-    if used_fallback:
-        result["source"] = "template-fallback"
-        log("WARN: template drafts in this run; the run footer and RUNBOOK.md carry the claude failure reason")
+    gaps: list[str] = []
+    if parsed is None:
+        _fill_template(sections)
     else:
-        log(
-            f"drafts via claude -p: {len(comments_by_index)} comments, post ideas for "
-            f"{len(ideas)} channels, shortlist {len(shortlist)}"
-        )
+        gaps = _fill_from_claude(sections, parsed)
+        if gaps:
+            _fill_template(sections)
+            result["claude_error"] = (
+                "incomplete claude response, template patches applied: " + "; ".join(gaps)
+            )
+
+    if parsed is None or gaps:
+        result["source"] = "template-fallback"
     return result

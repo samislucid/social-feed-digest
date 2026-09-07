@@ -1,17 +1,31 @@
 # social-feed-digest
 
-Twice-daily digest of hot topics from Sam's circles: X, Reddit, and (via a watched
-inbox) LinkedIn. Each digest has 5-8 ranked topics with source links, a
-ready-to-paste suggested comment per topic (grounded in the post's own text), a
-no-comment quiet-share link per topic, an engagement shortlist of the posts most
-worth commenting on (picked for comment-fit, each with a ready-to-post draft),
-and 3-5 original post ideas per channel (cross-source synthesis, never rehashed
-single posts or link shares). The Brightstack positioning/voice block in
-`profile.yaml` steers drafting. Delivered by email (Resend SMTP) and served from
-a private token-protected page. A run whose claude drafting failed says so in
-the email subject (`[DEGRADED: template drafts]`) and names the exact failure
-reason in the run footer. See `samples/digest-shape-sample.md` for a full
-example.
+Twice-daily, channel-first and action-first digest of what is moving in Sam's
+circles: X, Reddit, and (via a watched inbox) LinkedIn. Every draft and comment
+is a suggestion Sam posts manually - the worker never posts anywhere.
+
+Sections, in order:
+
+- **X** - a short summary of X activity on Sam's topics; a few specific tweets
+  that are generating attention (real links, author, why it matters); 2-3
+  ready-to-post tweet drafts for Sam's own account; recommended comments or
+  reposts on topical content.
+- **LinkedIn** - mirrors the X structure: activity summary, notable posts,
+  ready-to-post LinkedIn drafts, recommended comments or reshares. When the
+  watched inbox had nothing this run, the section says so visibly.
+- **Reddit (best N of M)** - capped at the best `reddit.max_digest_posts`
+  (default 5) posts per run across the whole digest, each with a ready-to-post
+  thread reply.
+- **Also spotted (web and news)** - compact context, including the daily
+  portfolio watchlist sweep.
+
+Original drafts are cross-source synthesis (never a retitled single post or a
+link share); comments are grounded in the post's own text. The Brightstack
+positioning/voice block in `profile.yaml` steers drafting. Delivered by email
+(Resend SMTP) and served from a private token-protected page. A run whose claude
+drafting failed says so in the email subject (`[DEGRADED: template drafts]`) and
+names the exact failure reason in the run footer. See
+`samples/digest-shape-sample.md` for a full example.
 
 ## Note for Reddit developer-platform reviewers
 
@@ -44,9 +58,18 @@ data/inbox/linkedin/* (Bright-pasted items) ───┘                        
   multi-source, cross-channel agreement and recency drive momentum; topics
   authored by followed X accounts get a ranking boost when the X API seam is
   configured. Same story is merged once and keeps each channel's share target.
-- **Draft**: headless `claude -p` matches the voice in `profile.yaml`. Where the
-  CLI is unavailable, drafts fall back to placeholders clearly marked
-  `TEMPLATE DRAFT` (the digest shows the drafting source).
+- **Shape**: ranked topics become per-channel sections (`digest/shape.py`).
+  Cross-channel stories render in their highest-priority channel (X before
+  LinkedIn before Reddit), which keeps the Reddit surface equal to the Reddit
+  section's cap. Reddit-primary topics are clamped to the best
+  `reddit.max_digest_posts`; web/news-only topics form the compact context
+  section.
+- **Draft**: headless `claude -p` matches the voice in `profile.yaml`, returning
+  per-channel JSON (summary, notable picks, drafts, engagement suggestions).
+  Indexes must point at the numbered candidate lists, so links and authors are
+  attached from real collected data and never invented. Where the CLI is
+  unavailable, drafts fall back to placeholders clearly marked `TEMPLATE DRAFT`
+  (the digest shows the drafting source).
 - **Deliver**: dated artifacts under `data/digests/<run_tag>/` (`digest.md`,
   `digest.html`, `digest.json`, `digest.eml`), a static private page under
   `data/pages/`, and an email send unless `--dry-run`.
@@ -73,7 +96,7 @@ skips the email send. Production run (cron/systemd): `python -m digest run`.
 ## Configuration
 
 Content settings live in `profile.yaml` (niches, keywords, subreddits, X handles,
-portfolio watchlist, voice, post-idea counts, delivery, cost budget, retention).
+portfolio watchlist, voice, Reddit digest cap, delivery, cost budget, retention).
 Edits change the next run with no code changes and no restarts.
 
 Secrets and infra live in environment variables (see `.env.example`): `XAI_API_KEY`,

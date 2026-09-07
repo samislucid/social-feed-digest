@@ -10,7 +10,7 @@ from email.message import EmailMessage
 from pathlib import Path
 
 from .config import Settings
-from .render import Digest, channel_label, topic_channels
+from .render import Digest, channel_label
 
 def _pacific_zone():
     try:
@@ -37,25 +37,30 @@ def digest_to_dict(digest: Digest) -> dict:
         "generated_at": digest.generated_at.isoformat(),
         "profile_name": digest.profile_name,
         "draft_source": digest.draft_source,
-        "topics": [
+        "sections": [
             {
-                "rank": i,
-                "title": t.title,
-                "niche": t.niche,
-                "channels": t.channel_labels,
-                "why_hot": t.why_hot,
-                "source_url": t.source_url,
-                "quiet_share_url": t.quiet_share_url,
-                "suggested_comment": t.comment,
-                "score": round(t.score, 2),
-                "sources": [i.url for i in t.items],
+                "channel": s.channel,
+                "summary": s.summary,
+                "intro": s.intro,
+                "empty_note": s.empty_note,
+                "notable": [
+                    {"index": n.index, "title": n.title, "url": n.url, "author": n.author, "why": n.why}
+                    for n in s.notable
+                ],
+                "drafts": s.drafts,
+                "engagements": [
+                    {
+                        "index": e.index,
+                        "title": e.title,
+                        "url": e.url,
+                        "author": e.author,
+                        "action": e.action,
+                        "comment": e.comment,
+                    }
+                    for e in s.engagements
+                ],
             }
-            for i, t in enumerate(digest.topics, 1)
-        ],
-        "post_ideas": digest.post_ideas,
-        "shortlist": [
-            {"title": s.title, "url": s.url, "why": s.why, "comment": s.comment}
-            for s in digest.shortlist
+            for s in digest.sections
         ],
         "collection": digest.collection,
         "cost": digest.cost,

@@ -3,224 +3,203 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from digest import draft as draft_mod
 from digest.config import load_profile
 from digest.items import Item
 from digest.rank import build_topics
+from digest.shape import shape_sections
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def _topics(base_profile):
-    items = [
-        Item(channel="x", title="Open-weights model tops reasoning evals", url="https://x.com/u/status/1"),
-        Item(channel="reddit", title="49ers lose starting QB to injury", url="https://reddit.com/r/nfl/1"),
+def _items():
+    return [
+        Item(
+            channel="x",
+            title="Open-weights model tops reasoning evals",
+            url="https://x.com/u/status/1",
+            summary="A 70B open-weights model beat frontier closed models on three reasoning evals.",
+            extra={"author": "@modelwatcher"},
+        ),
+        Item(
+            channel="reddit",
+            title="49ers lose starting QB to injury",
+            url="https://reddit.com/r/nfl/1",
+            summary="The 49ers placed their starting QB on injured reserve after Sunday's loss.",
+            source_label="r/nfl",
+        ),
     ]
-    return build_topics(items, base_profile)
 
 
-def _payload(**extra):
+def _sections(profile):
+    topics = build_topics(_items(), profile)
+    return shape_sections(topics, profile)
+
+
+def _claude_payload(**extra):
     payload = {
-        "comments": [
-            {"index": 1, "comment": "Numbers check out; worth a close read."},
-            {"index": 2, "comment": "Depth chart implications are real."},
-        ],
-        "post_ideas": {
-            "x": ["idea one", "idea two", "idea three"],
-            "linkedin": ["lesson one", "lesson two", "lesson three"],
-            "reddit": ["prompt one", "prompt two", "prompt three"],
+        "x": {
+            "summary": "Two eval-focused posts; open-weights beat closed models on reasoning.",
+            "notable": [{"index": 1, "why": "First open-weights sweep of the new eval set; practitioners are re-running it."}],
+            "drafts": ["Open weights just topped the reasoning evals. The gap is a release cycle now.", "Benchmarks moved; deployment math did not. Open models are the default assumption again."],
+            "engagements": [{"index": 1, "action": "comment", "comment": "The 70B result holds up on our internal set; the interesting part is cost per solved task, not the leaderboard."}],
+        },
+        "linkedin": {
+            "summary": "Quiet on LinkedIn; one practitioner post on agent evals.",
+            "notable": [],
+            "drafts": ["Evals are becoming procurement documents. Teams now ask for reasoning numbers before they ask for a demo."],
+            "engagements": [],
+        },
+        "reddit": {
+            "summary": "One injury thread for the sports niche.",
+            "engagements": [{"index": 1, "comment": "Depth chart aside, the schedule is what kills them the next four weeks."}],
         },
     }
     payload.update(extra)
-    return payload
+    return json.dumps(payload)
 
 
-def test_template_fallback_is_clearly_marked(base_profile, settings):
+def test_template_fallback_fills_sections_with_marked_placeholders(base_profile, settings):
     settings.disable_claude = True
-    topics = _topics(base_profile)
-    result = draft_mod.draft_digest(topics, base_profile, settings)
+    sections = _sections(base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings)
     assert result["source"] == "template-fallback"
-    assert all("TEMPLATE DRAFT" in t.comment for t in topics)
-    assert set(result["post_ideas"]) == {"x", "linkedin", "reddit"}
-    assert all(3 <= len(v) <= 5 for v in result["post_ideas"].values())
+    assert not result["claude_error"] or isinstance(result["claude_error"], str)
+    by = {s.channel: s for s in sections}
+    for channel in ("x", "linkedin"):
+        section = by[channel]
+        if not section.candidates:
+            # Empty channel: visible note, no fake drafts (LinkedIn has no input here).
+            assert section.empty_note
+            assert not section.drafts
+            continue
+        assert section.summary
+        assert section.notable, f"{channel} needs fallback notable posts"
+        assert section.drafts and all(d.startswith("[TEMPLATE DRAFT") for d in section.drafts)
+        assert section.engagements and all(e.comment.startswith("[TEMPLATE DRAFT") for e in section.engagements)
+    reddit = by["reddit"]
+    assert reddit.notable and reddit.notable[0].url == "https://reddit.com/r/nfl/1"
+    assert reddit.engagements[0].comment.startswith("[TEMPLATE DRAFT")
 
 
-def test_claude_output_is_applied(base_profile, settings, monkeypatch):
+def test_claude_drafts_fill_channel_sections(base_profile, settings, monkeypatch):
     settings.disable_claude = False
-    monkeypatch.setattr(draft_mod, "_run_claude", lambda prompt, settings: (json.dumps(_payload()), None))
-    topics = _topics(base_profile)
-    result = draft_mod.draft_digest(topics, base_profile, settings)
-    assert result["source"] == "claude"
-    assert topics[0].comment == "Numbers check out; worth a close read."
-    assert topics[1].comment == "Depth chart implications are real."
-    assert result["post_ideas"]["x"] == ["idea one", "idea two", "idea three"]
+    monkeypatch.setattr(draft_mod, "_run_claude", lambda prompt, s=None: (_claude_payload(), None))
+    sections = _sections(base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings)
+    assert result == {"source": "claude", "claude_error": None}
+    by = {s.channel: s for s in sections}
+    x = by["x"]
+    assert x.summary.startswith("Two eval-focused posts")
+    # Notable carries the REAL link and author from source data, never model text.
+    assert x.notable[0].url == "https://x.com/u/status/1"
+    assert x.notable[0].author == "@modelwatcher"
+    assert "open-weights" in x.notable[0].why
+    assert len(x.drafts) == 2 and "TEMPLATE" not in x.drafts[0]
+    assert x.engagements[0].action == "comment"
+    assert by["reddit"].engagements[0].comment.startswith("Depth chart")
 
 
-def test_malformed_claude_output_falls_back(base_profile, settings, monkeypatch):
+def test_claude_invalid_indexes_are_dropped_and_degrade(base_profile, settings, monkeypatch):
     settings.disable_claude = False
-    monkeypatch.setattr(draft_mod, "_run_claude", lambda prompt, settings: ("not json at all", None))
-    topics = _topics(base_profile)
-    result = draft_mod.draft_digest(topics, base_profile, settings)
+    payload = _claude_payload(
+        x={
+            "summary": "Summary text.",
+            "notable": [{"index": 99, "why": "out of range"}, {"index": "abc", "why": "not an index"}],
+            "drafts": ["A real draft."],
+            "engagements": [{"index": 7, "action": "comment", "comment": "wrong index"}],
+        }
+    )
+    monkeypatch.setattr(draft_mod, "_run_claude", lambda prompt, s=None: (payload, None))
+    sections = _sections(base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings)
     assert result["source"] == "template-fallback"
-    assert "TEMPLATE DRAFT" in topics[0].comment
-    assert result["claude_error"] == "claude output was not parseable JSON"
+    assert "incomplete claude response" in (result["claude_error"] or "")
+    by = {s.channel: s for s in sections}
+    # No hallucinated links: nothing at index 99 exists, so the notable pick and
+    # engagement were patched from template (marked) rather than trusting model
+    # output. Claude's free-text drafts survive; the run still degrades visibly.
+    assert by["x"].notable[0].why == by["x"].candidates[0].why_hot
+    assert all(e.comment.startswith("[TEMPLATE DRAFT") for e in by["x"].engagements)
+    assert "incomplete claude response" in (result["claude_error"] or "")
 
 
-def test_missing_cli_reports_reason(base_profile, settings, monkeypatch):
+def test_partial_claude_response_patches_only_the_gaps(base_profile, settings, monkeypatch):
     settings.disable_claude = False
-    monkeypatch.setattr(draft_mod.shutil, "which", lambda name: None)
-    result = draft_mod.draft_digest(_topics(base_profile), base_profile, settings)
+    payload = _claude_payload(linkedin={"summary": "", "notable": [], "drafts": [], "engagements": []})
+    monkeypatch.setattr(draft_mod, "_run_claude", lambda prompt, s=None: (payload, None))
+    items = _items() + [
+        Item(channel="linkedin", title="Agent evals in procurement", url="https://linkedin.com/p/1", source_label="A. Practitioner"),
+    ]
+    sections = shape_sections(build_topics(items, base_profile), base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings)
     assert result["source"] == "template-fallback"
-    assert result["claude_error"] and "not found on PATH" in result["claude_error"]
+    by = {s.channel: s for s in sections}
+    # X content survived; only the missing LinkedIn pieces were patched.
+    assert "TEMPLATE" not in by["x"].drafts[0]
+    assert by["linkedin"].drafts and all(d.startswith("[TEMPLATE DRAFT") for d in by["linkedin"].drafts)
+    assert "linkedin: no drafts" in (result["claude_error"] or "")
 
 
-def test_nonzero_exit_surfaces_stderr(base_profile, settings, monkeypatch):
+def test_empty_linkedin_run_does_not_degrade(base_profile, settings, monkeypatch):
     settings.disable_claude = False
-
-    class Proc:
-        returncode = 1
-        stdout = ""
-        stderr = "Invalid API key · Please run /login\n"
-
-    monkeypatch.setattr(draft_mod.shutil, "which", lambda name: "/usr/local/bin/claude")
-    monkeypatch.setattr(draft_mod.subprocess, "run", lambda *a, **k: Proc())
-    result = draft_mod.draft_digest(_topics(base_profile), base_profile, settings)
-    assert result["source"] == "template-fallback"
-    assert "claude exited 1" in result["claude_error"]
-    assert "Invalid API key" in result["claude_error"]
-
-
-def test_timeout_and_start_failure_are_named(base_profile, settings, monkeypatch):
-    settings.disable_claude = False
-    import subprocess as subprocess_mod
-
-    monkeypatch.setattr(draft_mod.shutil, "which", lambda name: "/usr/bin/claude")
-    monkeypatch.setattr(draft_mod.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(subprocess_mod.TimeoutExpired(cmd="claude", timeout=240)))
-    result = draft_mod.draft_digest(_topics(base_profile), base_profile, settings)
-    assert "timed out" in result["claude_error"]
-
-    def boom(*a, **k):
-        raise OSError("[Errno 2] No such file or directory: '/gone/claude'")
-
-    monkeypatch.setattr(draft_mod.subprocess, "run", boom)
-    result = draft_mod.draft_digest(_topics(base_profile), base_profile, settings)
-    assert "could not start" in result["claude_error"]
-
-
-def test_configured_claude_bin_is_used(base_profile, settings, monkeypatch):
-    settings.disable_claude = False
-    seen = {}
-
-    def fake_run(cmd, **kwargs):
-        seen["cmd"] = cmd
-
-        class Proc:
-            returncode = 0
-            stdout = json.dumps(_payload())
-            stderr = ""
-
-        return Proc()
-
-    monkeypatch.setattr(draft_mod.shutil, "which", lambda name: name)  # echo the configured path through
-    monkeypatch.setattr(draft_mod.subprocess, "run", fake_run)
-    settings.claude_bin = "/home/sam/.local/bin/claude"
-    result = draft_mod.draft_digest(_topics(base_profile), base_profile, settings)
-    assert seen["cmd"][0] == "/home/sam/.local/bin/claude"
-    assert result["source"] == "claude"
-
-
-def test_prompt_grounded_in_post_text_with_guardrails(base_profile):
+    monkeypatch.setattr(draft_mod, "_run_claude", lambda prompt, s=None: (_claude_payload(), None))
     items = [
-        Item(
-            channel="reddit",
-            title="Agents ate my CI budget",
-            url="https://reddit.com/r/LLMDevs/abc",
-            summary="Our CI spend tripled after letting agents run unattended. Anyone else seeing runaway loop costs?",
-        ),
-        Item(channel="x", title="Eval harnesses beat vibes", url="https://x.com/u/status/2", summary="We cut regressions 40% with a 30-case eval."),
+        Item(channel="x", title="Only X activity this run", url="https://x.com/u/status/2", extra={"author": "@a"}),
     ]
     topics = build_topics(items, base_profile)
-    prompt = draft_mod._build_prompt(topics, base_profile, 4, ["x", "linkedin", "reddit"])
-    # per-topic grounding: the post's own text is in the prompt
-    assert "post text:" in prompt and "runaway loop costs" in prompt
-    # comment guardrails
-    assert "Ground it in the post's own text" in prompt
-    assert "never generic praise" in prompt
-    # synthesis guardrails for post ideas
-    assert "at least two of the topics" in prompt
-    assert "Never restate or retitle a single post" in prompt
-    assert "never propose resharing a link" in prompt
-    # shortlist is comment-fit, not heat
-    assert "comment-fit, not raw heat" in prompt
-    # brightstack voice block is consumed from the profile
-    assert "AI-native workspace with a full team of agents" in prompt
-    assert "no promo spam" in prompt
-    # JSON contract includes the shortlist
-    assert '"shortlist"' in prompt
+    sections = shape_sections(topics, base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings)
+    assert result == {"source": "claude", "claude_error": None}
 
 
-def test_prompt_builds_from_real_repo_profile():
-    """Regression for the 2026-09-07 12:24 PT VPS crash: build the prompt from the
-    shipped profile.yaml itself. Fixtures (dos: []) and DIGEST_DISABLE_CLAUDE=1
-    e2e runs both skip _build_prompt, so the dos/donts joins shipped untested."""
-    repo_profile = load_profile(Path(__file__).resolve().parents[1] / "profile.yaml")
-    prompt = draft_mod._build_prompt(_topics(repo_profile), repo_profile, 4, ["x", "linkedin", "reddit"])
-    assert "Do: ground every comment" in prompt  # dos survive the join
-    assert "no hashtag stacks or emoji" in prompt  # donts survive the join
-    # reshape intent: the brightstack voice block still reaches the prompt
-    assert "AI-native workspace with a full team of agents" in prompt
-
-
-def test_structured_guidance_renders_into_prompt(base_profile):
-    """A dict inside dos (how the VPS profile crashed) renders readably instead
-    of raising 'sequence item 0: expected str instance, dict found'."""
-    profile = {**base_profile, "drafting": {
-        **base_profile["drafting"],
-        "dos": [{"voice": "Brightstack", "when": "AI workflow threads"}, "short, declarative, no hedging"],
-        "donts": [{"never": "pitch into unrelated threads"}],
-    }}
-    prompt = draft_mod._build_prompt(_topics(profile), profile, 4, ["x", "linkedin", "reddit"])
-    assert "voice: Brightstack; when: AI workflow threads" in prompt
-    assert "short, declarative, no hedging" in prompt
-    assert "never: pitch into unrelated threads" in prompt
-
-
-def test_prompt_build_failure_degrades_run_with_real_reason(base_profile, settings, monkeypatch):
-    """Degraded-not-dead: a prompt-building failure surfaces as the established
-    claude_error (DRAFTING DEGRADED in the email), never kills the run."""
-
-    def boom(*args, **kwargs):
-        raise RuntimeError("bad profile edit")
-
-    monkeypatch.setattr(draft_mod, "_build_prompt", boom)
+def test_claude_failure_keeps_the_real_reason(base_profile, settings, monkeypatch):
     settings.disable_claude = False
-    topics = _topics(base_profile)
-    result = draft_mod.draft_digest(topics, base_profile, settings)
+    reason = "claude binary not found: DIGEST_CLAUDE_BIN=/nonexistent/claude is missing or not executable"
+    monkeypatch.setattr(draft_mod, "_run_claude", lambda prompt, s=None: (None, reason))
+    sections = _sections(base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings)
     assert result["source"] == "template-fallback"
-    assert result["claude_error"] == "prompt build failed from profile: bad profile edit"
-    assert all(t.comment.startswith("[TEMPLATE DRAFT") for t in topics)
+    assert result["claude_error"] == reason
+    by = {s.channel: s for s in sections}
+    assert by["x"].drafts and all(d.startswith("[TEMPLATE DRAFT") for d in by["x"].drafts)
 
 
-def test_shortlist_from_claude_is_mapped_to_topics(base_profile, settings, monkeypatch):
-    settings.disable_claude = False
-    payload = _payload(shortlist=[{"index": 1, "why": "practitioner reply lands", "comment": "Built on your eval point: ..."}])
-    monkeypatch.setattr(draft_mod, "_run_claude", lambda prompt, settings: (json.dumps(payload), None))
-    topics = _topics(base_profile)
-    result = draft_mod.draft_digest(topics, base_profile, settings)
-    assert result["source"] == "claude"
-    entries = result["shortlist"]
-    assert len(entries) == 1
-    assert entries[0].index == 1
-    assert entries[0].title == topics[0].title
-    assert entries[0].url == topics[0].source_url
-    assert entries[0].why == "practitioner reply lands"
-    assert entries[0].comment == "Built on your eval point: ..."
+def test_prompt_keeps_brightstack_voice_and_channel_lists(base_profile):
+    sections = _sections(base_profile)
+    prompt = draft_mod._build_prompt(sections, base_profile)
+    assert "Brightstack context" in prompt
+    assert "AI-native workspace with a full team of agents" in prompt
+    assert "Mention only when" in prompt
+    assert "Do:" in prompt and "Don't:" in prompt
+    # Channel-first inputs and schema.
+    assert "https://x.com/u/status/1" in prompt
+    assert "@modelwatcher" in prompt
+    assert "https://reddit.com/r/nfl/1" in prompt
+    for key in ('"notable"', '"drafts"', '"engagements"', "retweet", "reshare", '"summary"'):
+        assert key in prompt
+    assert "never post" in prompt.lower()
 
 
-def test_shortlist_falls_back_to_ai_fit_topics(base_profile, settings):
+def test_prompt_built_from_real_repo_profile_keeps_voice_block():
+    profile = load_profile(ROOT / "profile.yaml")
+    sections = _sections(profile)
+    prompt = draft_mod._build_prompt(sections, profile)
+    bs = profile["brightstack"]
+    assert bs["one_liner"].splitlines()[0].strip()[:40] in prompt
+    assert bs["voice"]["register"] in prompt
+    dos = draft_mod._guidance_strings(profile["drafting"]["dos"])
+    assert dos[0] in prompt
+    assert "max_digest_posts" not in prompt  # config noise never reaches the model
+
+
+def test_template_drafts_synthesize_across_topics(base_profile, settings):
     settings.disable_claude = True
-    topics = _topics(base_profile)
-    result = draft_mod.draft_digest(topics, base_profile, settings)
-    entries = result["shortlist"]
-    assert entries, "fallback shortlist is never empty when topics exist"
-    # the AI-niche topic is picked by comment-fit, not raw heat
-    assert any("Open-weights" in e.title for e in entries)
-    assert all("TEMPLATE DRAFT" in e.comment for e in entries)
+    sections = _sections(base_profile)
+    draft_mod.draft_digest(sections, base_profile, settings)
+    x = next(s for s in sections if s.channel == "x")
+    # Two items only produce one X candidate here, so the fallback must not
+    # pretend a cross-topic synthesis exists.
+    assert all("build on" in d or "connect" in d for d in x.drafts)

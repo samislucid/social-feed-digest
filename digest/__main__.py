@@ -23,6 +23,7 @@ from .draft import draft_digest
 from .rank import build_topics
 from .render import Digest, build_email, render_html, render_markdown
 from .server import make_server
+from .shape import shape_sections
 
 
 def _log(msg: str) -> None:
@@ -154,7 +155,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         _log("ERROR: no topics collected; nothing to deliver")
         return 1
 
-    draft = draft_digest(topics, profile, settings, log=_log)
+    sections = shape_sections(topics, profile)
+    draft = draft_digest(sections, profile, settings, log=_log)
 
     tool_calls = sum(int(u.get("search_tool_calls", 0)) for _, u in usage)
     total_cost = sum(float(u.get("cost_usd", 0.0)) for _, u in usage)
@@ -167,8 +169,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         run_tag=run_tag_for(now),
         generated_at=now,
         profile_name=str(profile.get("name", "digest")),
-        topics=topics,
-        post_ideas=draft["post_ideas"],
+        sections=sections,
         draft_source=draft["source"],
         collection=collection,
         cost={
@@ -182,7 +183,6 @@ def cmd_run(args: argparse.Namespace) -> int:
         subject_prefix=(profile.get("delivery") or {}).get("email_subject_prefix", "[Feed Digest]"),
         duration_s=time.monotonic() - started,
         warnings=warnings,
-        shortlist=draft.get("shortlist") or [],
         claude_error=str(draft.get("claude_error") or ""),
     )
 
@@ -197,25 +197,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         summary = {
             "run_tag": digest.run_tag,
             "topic_count": len(topics),
-            "topics": [
-                {
-                    "rank": i,
-                    "title": t.title,
-                    "niche": t.niche,
-                    "channels": t.channel_labels,
-                    "source_url": t.source_url,
-                    "quiet_share_url": t.quiet_share_url,
-                    "comment": t.comment,
+            "sections": {
+                s.channel: {
+                    "posts": len(s.candidates),
+                    "notable": len(s.notable),
+                    "drafts": len(s.drafts),
+                    "engagements": len(s.engagements),
                 }
-                for i, t in enumerate(digest.topics, 1)
-            ],
-            "post_idea_counts": {k: len(v) for k, v in digest.post_ideas.items()},
+                for s in digest.sections
+            },
             "draft_source": digest.draft_source,
             "claude_error": digest.claude_error,
-            "shortlist": [
-                {"title": s.title, "url": s.url, "why": s.why, "comment": s.comment}
-                for s in digest.shortlist
-            ],
             "collection": collection,
             "cost_usd": round(total_cost, 4),
             "budget_usd": budget,
@@ -228,8 +220,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         Path(args.json_summary).write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
     _log(
-        f"done: {len(digest.topics)}/{max_topics} topics, external cost ${total_cost:.4f} "
-        f"(budget ${budget:.2f}), {digest.duration_s:.0f}s, artifacts in {run_dir}"
+        f"done: {len(topics)}/{max_topics} topics -> {len(digest.sections)} sections, "
+        f"external cost ${total_cost:.4f} (budget ${budget:.2f}), "
+        f"{digest.duration_s:.0f}s, artifacts in {run_dir}"
     )
     if digest.duration_s > 300:
         _log("WARN: run exceeded 5 minutes (non-functional requirement)")

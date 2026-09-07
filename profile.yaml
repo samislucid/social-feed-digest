@@ -16,6 +16,9 @@ reddit:
     - ArtificialInteligence
     - AI_developers
   limit: 25
+  # Reddit cap: at most this many Reddit posts appear in the whole digest,
+  # best-ranked first. Reddit was overweighting the digest (2026-09-07 review).
+  max_digest_posts: 5
 
 portfolio:
   enabled: true
@@ -89,18 +92,11 @@ brightstack:
       promo spam, 'check out our product', hype words, or pitching Brightstack
       into threads where it does not fit
 
-engagement:
-  # Posts picked per run for the engagement shortlist, by comment-fit (AI topics
-  # where a practitioner reply with light Brightstack relevance lands), not raw heat.
-  shortlist_size: 3
-
-post_ideas:
-  per_channel: 4             # 3-5 per channel
-  channels: [x, linkedin, reddit]
-
 rank:
   min_topics: 5
-  max_topics: 8
+  # High enough that every channel section has surface: X and LinkedIn posts,
+  # the capped Reddit block (see reddit.max_digest_posts), and web/news context.
+  max_topics: 12
 
 cost:
   per_run_budget_usd: 0.25   # hard acceptance cap for external API cost per full run
