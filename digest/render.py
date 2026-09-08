@@ -424,24 +424,61 @@ def _page_post_card(section: Section, n: Notable) -> str:
     )
 
 
-# --- email (Gmail-first: tables + inline styles, no JS, image-block-proof) ---
+# --- email (Sam's mock redesign, 2026-09-08: tables + inline styles, no JS) ---
+#
+# Structure and visual language from the hand-drawn mock
+# (app://files/file_oTCbyaOw2gPUVhMS): a 600px white card on a light gray
+# page; a PLATFORM / POSTS / TO ACT ON summary table (to-act-on counts struck
+# through - every suggestion is posted manually); a disclosure line; per-post
+# cards with a narrow left rail (platform, niche, time, action tags) and the
+# post on the right; a light-blue suggested-comment box with Copy / Open
+# buttons; a "Drafts for your account" block; a compact read-only list; and a
+# small stats footer.
+#
+# Gmail-safe: tables + inline styles, no JavaScript, no remote images (the
+# mock is text-only), under 102KB. Copy buttons cannot run JS, so they open a
+# pre-addressed mailto: compose window carrying the text in the body - an
+# honest, scriptless "copy". Open post / Open thread anchor the real URLs.
 
-_EMAIL_STYLE = (
+from urllib.parse import quote as _q  # mailto bodies
+
+M_ACCENT = "#0080b0"      # steel blue: buttons, labels, links (from the mock)
+M_ACCENT_DARK = "#00618a"
+M_TINT = "#eaf5fb"        # suggested-comment box fill
+M_TINT_LINE = "#cfe6f2"
+M_TAG_RED = "#c62828"     # action tags, POST MANUALLY, struck to-act-on counts
+M_BG = "#f0f0f2"         # page background
+M_CARD_LINE = "#e4e6ea"   # card border / separators
+M_INK = "#1a1d23"
+M_BODY_INK = "#3a4149"
+M_MUTED = "#6b7079"
+M_FAINT = "#989da6"
+M_BTN_LINE = "#c9ced6"
+M_AMBER_BG = "#fff8e6"
+M_AMBER_LINE = "#f0db9f"
+M_AMBER_INK = "#8a6100"
+
+_DRAFT_SOURCE_LABEL = {
+    "claude": "claude",
+    "claude-partial": "claude (partial)",
+    "template-fallback": "template",
+}
+
+_EMAIL_STYLE_MOCK = (
     "@media only screen and (max-width:620px){"
-    ".container{width:100%!important;border-radius:0!important}"
-    ".pad{padding:16px 14px!important}"
-    ".padx{padding-left:14px!important;padding-right:14px!important}"
-    ".thumb{width:56px!important;height:56px!important}"
+    ".em-card{width:100%!important;border-left:0!important;border-right:0!important}"
+    ".em-pad{padding:18px 14px!important}"
+    ".em-rail{display:block!important;width:auto!important;padding:0 0 8px!important}"
     "}"
-    f"a{{color:{ACCENT}}}"
+    f"a{{color:{M_ACCENT}}}"
 )
 
 
-def _email_open(digest: Digest) -> list[str]:
+def _em_open(digest: Digest) -> list[str]:
     e = escape
     posts, drafts = _totals(digest)
     preheader = (
-        f"{posts} posts, {drafts} drafts across X, LinkedIn, Reddit and web. "
+        f"{posts} posts, {drafts} drafts ready to review. "
         f"{MANUAL_POSTING_NOTE}"
     )
     return [
@@ -449,297 +486,422 @@ def _email_open(digest: Digest) -> list[str]:
         '<html lang="en"><head><meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         f"<title>{e(digest.subject)}</title>",
-        f"<style>{_EMAIL_STYLE}</style></head>",
-        f'<body style="margin:0;padding:0;background:{BG};">',
+        f"<style>{_EMAIL_STYLE_MOCK}</style></head>",
+        f'<body style="margin:0;padding:0;background:{M_BG};">',
         f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">{e(preheader)}</div>',
-        f'<div style="background:{BG};font-family:{_FONT};">',
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f2f3f7">'
-        "<tr><td align=\"center\" style=\"padding:20px 8px;\">",
+        f'<div style="background:{M_BG};font-family:{_FONT};">',
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f0f0f2">'
+        '<tr><td align="center" style="padding:20px 8px;">',
     ]
 
 
-def _email_close() -> str:
+def _em_close() -> str:
     return "</td></tr></table></div></body></html>"
 
 
-def _card_table(inner: str, radius: int = 14) -> str:
+def _em_hr() -> str:
     return (
-        f'<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" '
-        f'class="container" style="width:600px;max-width:600px;background:#ffffff;'
-        f"border:1px solid {LINE};border-radius:{radius}px;\">"
-        f"{inner}</table>"
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f'<tr><td style="height:1px;background:{M_CARD_LINE};font-size:0;line-height:0;">&nbsp;</td></tr></table>'
     )
 
 
-def _spacer(h: int = 14) -> str:
+def _em_spacer(h: int) -> str:
     return f'<div style="height:{h}px;line-height:{h}px;font-size:{h}px;">&nbsp;</div>'
 
 
-def _thumb_email(n: Notable, channel: str, size: int = 72) -> str:
+def _mailto_link(text: str, label: str, digest: Digest, subject: str) -> str:
+    """Scriptless copy button: opens a compose window pre-filled with the text."""
     e = escape
-    hint = CHANNEL_HINT.get(channel, ACCENT)
-    tint = CHANNEL_TINT.get(channel, ACCENT_SOFT)
-    radius = 10
-    cell = f'<td class="thumb" width="{size + 10}" valign="top" style="width:{size + 10}px;padding:12px 0 12px 12px;">'
-    if n.image:
-        inner = (
-            f'<img src="{e(n.image)}" alt="" width="{size}" height="{size}" '
-            f'style="display:block;width:{size}px;height:{size}px;border-radius:{radius}px;'
-            f'border:1px solid {LINE};object-fit:cover;">'
-        )
-    else:
-        mono = e(_initials(n.author))
-        inner = (
-            f'<div style="width:{size}px;height:{size}px;border-radius:{radius}px;background:{tint};'
-            f"color:{hint};font-family:{_FONT};font-size:{round(size / 2.8)}px;font-weight:700;"
-            f'text-align:center;line-height:{size}px;">{mono}</div>'
-        )
-    return f"{cell}{inner}</td>"
-
-
-def _stat_strip_email(digest: Digest, border_top: bool = False) -> str:
-    e = escape
-    posts, drafts = _totals(digest)
-    per_channel = _per_channel(digest)
-    border = f"border-top:1px solid {LINE};" if border_top else ""
-    inner = [
-        f'<tr><td class="pad" style="{border}padding:16px 20px 14px;">',
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>',
-        f'<td style="font-family:{_FONT};color:{INK};font-size:26px;font-weight:800;line-height:1;">{posts}</td>',
-        f'<td style="font-family:{_FONT};color:{MUTED};font-size:13px;font-weight:600;padding-left:6px;">post{"s" if posts != 1 else ""}</td>',
-        f'<td align="right" style="font-family:{_FONT};color:{INK};font-size:26px;font-weight:800;padding-right:6px;">{drafts}</td>',
-        f'<td align="right" style="font-family:{_FONT};color:{MUTED};font-size:13px;font-weight:600;">draft{"s" if drafts != 1 else ""} ready</td>',
-        "</tr></table>",
-    ]
-    bar = "".join(
-        f'<td width="{round(n / posts * 100)}%" bgcolor="{CHANNEL_HINT.get(c, ACCENT)}" '
-        f'style="height:8px;width:{round(n / posts * 100)}%;background:{CHANNEL_HINT.get(c, ACCENT)};"></td>'
-        for c, n, _d in per_channel if n
-    ) or f'<td width="100%" bgcolor="{LINE}"></td>'
-    inner.append(
-        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;">'
-        f'<tr>{bar}</tr></table>'
-    )
-    legend = "".join(
-        f'<td style="font-family:{_FONT};color:{MUTED};font-size:12px;padding-right:12px;white-space:nowrap;">'
-        f'<span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:{CHANNEL_HINT.get(c, ACCENT)};'
-        f'vertical-align:1px;"></span> {e(channel_label(c))} {n} · {d}d</td>'
-        for c, n, d in per_channel
-    )
-    inner.append(f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:7px;"><tr>{legend}</tr></table>')
-    inner.append("</td></tr>")
-    return "".join(inner)
-
-
-def _email_header_card(digest: Digest) -> str:
-    e = escape
-    inner = [
-        '<tr><td class="pad" style="padding:20px 20px 14px;">',
-        f'<div style="font-family:{_FONT};color:{ACCENT};font-size:11px;font-weight:700;'
-        f'letter-spacing:.14em;">SOCIAL FEED DIGEST</div>',
-        f'<h1 style="margin:6px 0 2px;font-family:{_FONT};color:{INK};font-size:21px;'
-        f'font-weight:800;letter-spacing:-.01em;">{e(digest.run_tag)}</h1>',
-        f'<p style="margin:2px 0 0;font-family:{_FONT};color:{MUTED};font-size:13px;line-height:1.5;">'
-        f'{e(digest.generated_at.strftime("%Y-%m-%d %H:%M %Z"))} · profile: {e(digest.profile_name)} · '
-        f"drafting: {e(digest.draft_source)}</p>",
-        f'<p style="margin:8px 0 0;font-family:{_FONT};color:{FAINT};font-size:12px;line-height:1.5;">'
-        f"{e(MANUAL_POSTING_NOTE)}</p>",
-    ]
-    if digest.draft_source in DEGRADED_SOURCES:
-        inner.append(
-            f'<div style="margin-top:12px;background:{AMBER_BG};border:1px solid {AMBER_LINE};'
-            f'border-radius:10px;padding:10px 12px;font-family:{_FONT};color:{AMBER_INK};'
-            f'font-size:12.5px;font-weight:600;line-height:1.5;">{e(_degraded_banner_text(digest))}</div>'
-        )
-    inner.append("</td></tr>")
-    inner.append(_stat_strip_email(digest, border_top=True))
-    return _card_table("".join(inner))
-
-
-def _email_post_card(section: Section, n: Notable) -> str:
-    e = escape
-    chip = ""
-    if n.engagement > 0:
-        chip = (
-            f' <span style="display:inline-block;padding:1px 7px;border-radius:10px;background:{ACCENT_SOFT};'
-            f'color:{ACCENT_INK};font-size:11.5px;font-weight:700;">↑ {n.engagement}</span>'
-        )
-    who = f"{e(n.author)}{chip}" if n.author.strip() else (chip.strip() or "")
-    why_label = "Why it matters" if section.channel in ("x", "linkedin") else "Why hot"
-    why = f'<div style="margin-top:7px;font-family:{_FONT};color:{BODY_INK};font-size:14px;line-height:1.5;">{e(why_label + ": " + n.why)}</div>' if n.why else ""
-    label = "Open thread" if section.channel == "reddit" else "Open post"
-    open_link = (
-        f'<div style="margin-top:7px;"><a href="{e(n.url)}" style="font-family:{_FONT};color:{ACCENT};'
-        f'font-weight:600;font-size:13px;text-decoration:none;">{label} ↗</a></div>'
-    )
-    comment = ""
-    if section.channel == "reddit":
-        match = next((en for en in section.engagements if en.index == n.index), None)
-        if match:
-            comment = (
-                f'<div style="margin-top:8px;background:#f6f7f9;border-left:3px solid {LINE};'
-                f'border-radius:0 8px 8px 0;padding:8px 11px;font-family:{_FONT};color:{BODY_INK};'
-                f'font-size:13px;line-height:1.5;">{e("Suggested comment: " + match.comment)}</div>'
-            )
-    body = [
-        f'<a href="{e(n.url)}" style="font-family:{_FONT};color:{INK};text-decoration:none;'
-        f'font-weight:700;font-size:15.5px;line-height:1.4;">{e(n.title)}</a>',
-    ]
-    if who:
-        body.append(f'<div style="margin-top:5px;font-family:{_FONT};color:{MUTED};font-size:13px;">{who}</div>')
-    body.append(why)
-    body.append(open_link)
-    body.append(comment)
+    href = f"mailto:{e(digest.email_to)}?subject={_q(subject)}&body={_q(text)}"
     return (
-        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        f'style="border:1px solid {LINE};border-radius:12px;"><tr>'
-        f"{_thumb_email(n, section.channel)}"
-        f'<td valign="top" style="padding:12px 14px;font-family:{_FONT};">{"".join(body)}</td>'
+        f'<a href="{e(href)}" style="display:inline-block;background:{M_ACCENT};'
+        f"color:#ffffff;font-family:{_FONT};font-size:12px;font-weight:700;"
+        f'padding:7px 14px;border-radius:4px;text-decoration:none;">'
+        f"{e(label)}</a>"
+    )
+
+
+def _em_outline_link(url: str, label: str) -> str:
+    e = escape
+    return (
+        f'<a href="{e(url)}" style="display:inline-block;background:#ffffff;'
+        f"color:{M_INK};font-family:{_FONT};font-size:12px;font-weight:700;"
+        f"padding:6px 13px;border-radius:4px;border:1px solid {M_BTN_LINE};"
+        f'text-decoration:none;">{e(label)}</a>'
+    )
+
+
+def _to_act_on(section: Section) -> int:
+    return len(section.engagements) + len(section.drafts)
+
+
+def _reddit_of(digest: Digest) -> tuple[int, str]:
+    """("5 of 11", plain count label) from the honest reddit intro line."""
+    section = next((s for s in digest.sections if s.channel == "reddit"), None)
+    if not section or not section.intro:
+        return 0, ""
+    import re as _re
+
+    m = _re.search(r"best (\d+) of (\d+)", section.intro)
+    if m:
+        return int(m.group(2)), f"{m.group(1)} of {m.group(2)}"
+    return 0, ""
+
+
+def _em_summary_table(digest: Digest) -> list[str]:
+    """PLATFORM / POSTS / TO ACT ON, to-act-on struck through (manual posting)."""
+    rows: list[str] = []
+    head = (
+        f'<td style="padding:7px 10px;font-family:{_FONT};font-size:10.5px;font-weight:700;'
+        f'letter-spacing:.08em;color:{M_FAINT};text-transform:uppercase;"'
+    )
+    rows.append(
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f'<tr>{head}align="left">PLATFORM</td>{head}align="right">POSTS</td>{head}align="right">TO ACT ON</td></tr>'
+    )
+    reddit_total, reddit_of = _reddit_of(digest)
+    for section in digest.sections:
+        posts_label = (
+            f"{reddit_of}" if section.channel == "reddit" and reddit_of else f"{len(section.notable)}"
+        )
+        act = _to_act_on(section)
+        act_html = (
+            f'<span style="text-decoration:line-through;color:{M_TAG_RED};">{act}</span>'
+            if act
+            else f'<span style="color:{M_FAINT};">0</span>'
+        )
+        cell = f'padding:8px 10px;font-family:{_FONT};font-size:13px;border-top:1px solid {M_CARD_LINE};'
+        rows.append(
+            "<tr>"
+            f'<td style="{cell}color:{M_INK};font-weight:700;">{escape(channel_label(section.channel))}</td>'
+            f'<td style="{cell}color:{M_BODY_INK};text-align:right;">{escape(posts_label)}</td>'
+            f'<td style="{cell}text-align:right;">{act_html}</td>'
+            "</tr>"
+        )
+    rows.append("</table>")
+    return rows
+
+
+def _em_header(digest: Digest) -> list[str]:
+    e = escape
+    disclosure = (
+        f"profile: {digest.profile_name} · drafting: "
+        f"{_DRAFT_SOURCE_LABEL.get(digest.draft_source, digest.draft_source)} · "
+        "suggestions only, the worker never posts"
+    )
+    return [
+        '<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="em-card" '
+        f'style="width:600px;max-width:600px;background:#ffffff;border:1px solid {M_CARD_LINE};border-radius:10px;">'
+        '<tr><td class="em-pad" style="padding:22px 22px 16px;">',
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+        f'<td style="font-family:{_FONT};font-size:22px;font-weight:800;color:{M_INK};">Feed digest</td>'
+        f'<td align="right" style="font-family:{_FONT};font-size:12.5px;color:{M_MUTED};">{e(digest.run_tag)}</td>'
+        "</tr></table>",
+        _em_spacer(14),
+        *_em_summary_table(digest),
+        _em_spacer(10),
+        f'<div style="font-family:{_FONT};font-size:11.5px;color:{M_MUTED};">{e(disclosure)}</div>',
+        "</td></tr></table>",
+    ]
+
+
+def _em_tag(label: str, color: str) -> str:
+    return (
+        f'<div style="font-family:{_FONT};font-size:10px;font-weight:800;letter-spacing:.07em;'
+        f'color:{color};padding:2px 0;">{escape(label)}</div>'
+    )
+
+
+def _em_pt(posted_at) -> str:
+    if not posted_at:
+        return ""
+    try:
+        from zoneinfo import ZoneInfo
+
+        local = posted_at.astimezone(ZoneInfo("America/Los_Angeles"))
+    except Exception:  # pragma: no cover - minimal environments
+        local = posted_at
+    return local.strftime("%I:%M %p").lstrip("0")
+
+
+def _em_action_tags(section: Section, n: Notable, engagement) -> list[str]:
+    tags: list[str] = []
+    if engagement is None:
+        return tags
+    action = (engagement.action or "").lower()
+    if section.channel == "reddit":
+        tags.append(_em_tag("COMMENT", M_TAG_RED))
+    elif action in ("comment", "retweet", "reshare"):
+        tags.append(_em_tag("COMMENT", M_TAG_RED))
+        if section.channel == "x":
+            tags.append(_em_tag("+ REPOST", M_MUTED))
+        elif section.channel == "linkedin":
+            tags.append(_em_tag("+ RESHARE", M_MUTED))
+    return tags
+
+
+def _em_rail(section: Section, n: Notable, engagement) -> str:
+    e = escape
+    lines = [
+        f'<td class="em-rail" width="92" valign="top" style="width:92px;padding:0 12px 0 0;'
+        f'font-family:{_FONT};vertical-align:top;">',
+        f'<div style="font-size:11.5px;font-weight:800;color:{M_INK};letter-spacing:.04em;">'
+        f"{e(channel_label(section.channel).upper())}</div>",
+    ]
+    if n.niche:
+        lines.append(f'<div style="font-size:11px;color:{M_MUTED};padding-top:2px;">{e(n.niche)}</div>')
+    if n.source_label:
+        lines.append(f'<div style="font-size:11px;color:{M_MUTED};">{e(n.source_label)}</div>')
+    if n.author.startswith("r/"):
+        lines.append(f'<div style="font-size:11px;color:{M_MUTED};">{e(n.author)}</div>')
+    stamp = _em_pt(n.posted_at)
+    if stamp:
+        lines.append(f'<div style="font-size:11.5px;color:{M_FAINT};padding-top:2px;">{e(stamp)}</div>')
+    if n.engagement > 0:
+        lines.append(f'<div style="font-size:11.5px;color:{M_FAINT};">↑ {n.engagement}</div>')
+    lines.extend(_em_action_tags(section, n, engagement))
+    lines.append("</td>")
+    return "".join(lines)
+
+
+def _em_comment_box(text: str, digest: Digest, url: str, open_label: str) -> str:
+    e = escape
+    return (
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+        f'style="margin-top:9px;background:{M_TINT};border:1px solid {M_TINT_LINE};border-radius:6px;">'
+        f'<tr><td style="padding:10px 12px;font-family:{_FONT};">'
+        f'<div style="font-size:10.5px;font-weight:800;letter-spacing:.07em;color:{M_ACCENT_DARK};'
+        f'text-decoration:underline;">SUGGESTED COMMENT</div>'
+        f'<div style="font-size:13px;line-height:1.5;color:{M_BODY_INK};padding-top:4px;">{e(text)}</div>'
+        "</td></tr></table>"
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:9px;"><tr>'
+        f"<td>{_mailto_link(text, 'Copy comment', digest, 'Digest comment draft')}</td>"
+        f'<td style="width:8px;"></td>'
+        f"<td>{_em_outline_link(url, open_label)}</td>"
         "</tr></table>"
     )
 
 
-def _email_draft_block(i: int, draft: str) -> str:
-    text = _comment_email(draft)
-    prefix = f'<span style="color:{ACCENT_INK};font-weight:800;">{i}.</span> '
-    return (
-        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        f'style="margin-top:8px;"><tr><td style="background:{ACCENT_SOFT};border-left:3px solid {ACCENT};'
-        f'border-radius:0 8px 8px 0;padding:9px 12px;font-family:{_FONT};color:{INK};'
-        f'font-size:14px;line-height:1.55;">{prefix}{text}</td></tr></table>'
-    )
-
-
-def _comment_email(text: str) -> str:
+def _em_post_card(section: Section, n: Notable, digest: Digest, with_comment: bool) -> str:
     e = escape
-    if text.startswith("[TEMPLATE DRAFT"):
-        return (
-            f'<span style="color:{AMBER_INK};font-weight:700;">{e("[TEMPLATE DRAFT]")}</span>'
-            + e(text.split("]", 1)[-1])
+    engagement = next((g for g in section.engagements if g.index == n.index), None) if with_comment else None
+    open_label = "Open thread" if section.channel == "reddit" else "Open post"
+    if not with_comment:
+        engagement = next((g for g in section.engagements if g.index == n.index), None)
+    author_line = (
+        f'<div style="font-size:12.5px;color:{M_MUTED};padding-top:2px;">{e(n.author)}</div>'
+        if n.author and not n.author.startswith("r/")
+        else ""
+    )
+    why_line = f'<div style="font-size:13px;line-height:1.5;color:{M_BODY_INK};padding-top:6px;">{e(n.why)}</div>' if n.why else ""
+    comment_html = ""
+    if engagement and engagement.comment:
+        comment_html = _em_comment_box(engagement.comment, digest, n.url, open_label)
+    else:
+        comment_html = (
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:9px;">'
+            f"<tr><td>{_em_outline_link(n.url, open_label)}</td></tr></table>"
         )
-    return e(text)
-
-
-def _email_engagement_row(entry: Engagement, channel: str) -> str:
-    e = escape
-    hint = CHANNEL_HINT.get(channel, ACCENT)
-    tint = CHANNEL_TINT.get(channel, ACCENT_SOFT)
     return (
-        '<tr><td style="padding:9px 0;border-top:1px solid ' + LINE + ';">'
-        f'<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:{tint};'
-        f'color:{hint};font-family:{_FONT};font-size:11px;font-weight:700;letter-spacing:.05em;">'
-        f"{e(entry.action.upper())}</span> "
-        f'<a href="{e(entry.url)}" style="font-family:{_FONT};color:{INK};font-weight:600;'
-        f'font-size:14.5px;text-decoration:none;">{e(entry.title)}</a>'
-        f' <span style="font-family:{_FONT};color:{MUTED};font-size:12.5px;">{e(entry.author)}</span>'
-        f'<div style="margin-top:6px;background:#f6f7f9;border-left:3px solid {LINE};'
-        f'border-radius:0 8px 8px 0;padding:8px 11px;font-family:{_FONT};color:{BODY_INK};'
-        f'font-size:13px;line-height:1.5;">{e(entry.comment)}</div>'
-        "</td></tr>"
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+        f"<tr>{_em_rail(section, n, engagement)}"
+        f'<td valign="top" style="font-family:{_FONT};vertical-align:top;">'
+        f'<a href="{e(n.url)}" style="font-size:15px;font-weight:700;color:{M_INK};'
+        f'text-decoration:none;line-height:1.35;">{e(n.title)}</a>'
+        f"{author_line}{why_line}{comment_html}"
+        "</td></tr></table>"
     )
 
 
-def _email_section_card(section: Section) -> str:
+def _em_web_list(section: Section) -> list[str]:
+    """Web/news context: compact "Also spotted" list, no card chrome (mock keeps
+    web to the counts and the product spec calls it a compact context list)."""
     e = escape
-    hint = CHANNEL_HINT.get(section.channel, ACCENT)
-    inner = [
-        '<tr><td class="pad" style="padding:14px 18px 10px;">',
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>',
-        f'<td width="4" style="width:4px;background:{hint};border-radius:2px;"></td>',
-        f'<td style="padding-left:10px;font-family:{_FONT};color:{INK};font-size:17px;'
-        f'font-weight:800;">{e(_section_title(section))}</td>',
-        f'<td align="right" valign="middle" style="font-family:{_FONT};color:{MUTED};'
-        f'font-size:12px;font-weight:600;white-space:nowrap;">{e(_section_counts_label(section))}</td>',
-        "</tr></table></td></tr>",
+    parts = [
+        f'<div style="font-family:{_FONT};font-size:13px;font-weight:800;color:{M_INK};">'
+        "Also spotted (web and news)</div>",
+        f'<div style="font-family:{_FONT};font-size:12.5px;color:{M_MUTED};padding:2px 0 6px;">'
+        f"{e(section.summary)}</div>" if section.summary else "",
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">',
     ]
-    if not section.candidates:
-        inner.append(
-            f'<tr><td class="padx" style="padding:2px 18px 16px;font-family:{_FONT};color:{MUTED};'
-            f'font-size:13.5px;line-height:1.55;">{e(section.empty_note or "Nothing collected for this channel this run.")}</td></tr>'
+    for n in section.notable:
+        who = f' <span style="color:{M_MUTED};">{e(n.author)}</span>' if n.author.strip() else ""
+        parts.append(
+            '<tr><td style="padding:5px 0;border-top:1px solid #eee;">'
+            f'<a href="{e(n.url)}" style="font-family:{_FONT};font-size:13px;color:{M_ACCENT};'
+            f'text-decoration:underline;">{e(n.title)}</a>{who}</td></tr>'
         )
-        return _card_table("".join(inner))
+    parts.append("</table>")
+    return parts
 
-    if section.channel in ("x", "linkedin"):
-        inner.append(
-            f'<tr><td class="padx" style="padding:2px 18px 12px;font-family:{_FONT};color:{BODY_INK};'
-            f'font-size:14.5px;line-height:1.55;">{e(section.summary or _section_title(section))}</td></tr>'
+
+def _em_readonly_rows(section: Section, rows: list[Notable]) -> str:
+    e = escape
+    parts = [
+        f'<div style="font-family:{_FONT};font-size:10.5px;font-weight:800;letter-spacing:.08em;'
+        f'color:{M_FAINT};padding:12px 0 2px;">READ ONLY</div>',
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">',
+    ]
+    open_label = "Open thread" if section.channel == "reddit" else "Open link"
+    for n in rows:
+        author = f' <span style="color:{M_MUTED};font-size:12px;">{e(n.author)}</span>' if n.author else ""
+        parts.append(
+            f'<tr><td style="padding:7px 0;border-top:1px solid {M_CARD_LINE};font-family:{_FONT};">'
+            f'<a href="{e(n.url)}" style="font-size:13.5px;font-weight:600;color:{M_INK};text-decoration:none;">'
+            f"{e(n.title)}</a> "
+            f'<a href="{e(n.url)}" style="font-size:12px;font-weight:700;color:{M_ACCENT};'
+            f'text-decoration:underline;">{open_label}</a>'
+            f"{author}</td></tr>"
         )
-        blocks: list[str] = []
-        if section.notable:
-            blocks.append(
-                f'<div style="font-family:{_FONT};color:{MUTED};font-size:12px;font-weight:700;'
-                f'letter-spacing:.06em;margin:4px 0 8px;">Posts getting attention</div>'
-            )
-            for n in section.notable:
-                blocks.append(_email_post_card(section, n))
-                blocks.append('<div style="height:8px;font-size:8px;line-height:8px;">&nbsp;</div>')
-        if section.drafts:
-            blocks.append(
-                f'<div style="font-family:{_FONT};color:{MUTED};font-size:12px;font-weight:700;'
-                f'letter-spacing:.06em;margin:8px 0 2px;">Drafts for your account (post manually)</div>'
-            )
-            for i, draft in enumerate(section.drafts, 1):
-                blocks.append(_email_draft_block(i, draft))
-        if section.engagements:
-            verb = "reposts" if section.channel == "x" else "reshares"
-            blocks.append(
-                f'<div style="font-family:{_FONT};color:{MUTED};font-size:12px;font-weight:700;'
-                f'letter-spacing:.06em;margin:14px 0 2px;">Comments and {e(verb)} worth making</div>'
-            )
-            rows = "".join(_email_engagement_row(entry, section.channel) for entry in section.engagements)
-            blocks.append(f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows}</table>')
-        inner.append(f'<tr><td class="padx" style="padding:0 18px 16px;">{"".join(blocks)}</td></tr>')
-        return _card_table("".join(inner))
+    parts.append("</table>")
+    return "".join(parts)
 
-    # Reddit and web/news: capped post list with inline suggested comments.
-    parts = []
+
+def _em_channel_block(section: Section, digest: Digest) -> list[str]:
+    e = escape
+    if section.channel == "web":
+        return _em_web_list(section)
+    if not section.notable and not section.drafts:
+        note = (
+            "Nothing this run. LinkedIn arrives through the watched inbox; nothing reached it."
+            if section.channel == "linkedin"
+            else section.empty_note
+        )
+        return [
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+            f'<td style="font-family:{_FONT};font-size:13.5px;color:{M_BODY_INK};padding:4px 0;">'
+            f'<span style="font-weight:800;color:{M_INK};font-size:14px;">{e(channel_label(section.channel).upper())}</span>'
+            f'<div style="padding-top:4px;">{e(note)}</div></td></tr></table>'
+            + "".join(_em_channel_drafts(section, digest)),
+        ]
+    parts: list[str] = []
     if section.summary:
         parts.append(
-            f'<tr><td class="padx" style="padding:2px 18px 12px;font-family:{_FONT};color:{BODY_INK};'
-            f'font-size:14.5px;line-height:1.55;">{e(section.summary)}</td></tr>'
+            f'<div style="font-family:{_FONT};font-size:13px;line-height:1.5;color:{M_BODY_INK};'
+            f'padding-bottom:6px;">{e(section.summary)}</div>'
         )
-    cards = []
-    for n in section.notable:
-        cards.append(_email_post_card(section, n))
-        cards.append('<div style="height:8px;font-size:8px;line-height:8px;">&nbsp;</div>')
-    parts.append(f'<tr><td class="padx" style="padding:0 18px 16px;">{"".join(cards)}</td></tr>')
-    inner.extend(parts)
-    return _card_table("".join(inner))
+    readonly: list[Notable] = []
+    for i, n in enumerate(section.notable):
+        has_comment = any(g.index == n.index and g.comment for g in section.engagements)
+        if section.channel == "reddit" and not has_comment:
+            readonly.append(n)
+            continue
+        parts.append(_em_post_card(section, n, digest, with_comment=has_comment))
+    if readonly:
+        parts.append(_em_readonly_rows(section, readonly))
+    parts.extend(_em_channel_drafts(section, digest))
+    return parts
 
 
-def _email_footer_card(digest: Digest) -> str:
+def _em_channel_drafts(section: Section, digest: Digest) -> list[str]:
+    """The channel's drafts, inside the channel block right after its cards
+    (mock: X's "Drafts for your account" sits between the X card and Reddit)."""
+    if not section.drafts:
+        return []
     e = escape
-    lines = [
-        f"<b>Collection:</b> {e(', '.join(f'{channel_label(k)}: {v}' for k, v in sorted(digest.collection.items())))}",
-        f"<b>xAI tool calls:</b> {digest.cost.get('search_tool_calls', 0)}",
-        f"<b>est. cost:</b> ${digest.cost.get('total_usd', 0.0):.4f} (budget ${digest.cost.get('budget_usd', 0.25):.2f})",
-        f"duration {digest.duration_s:.0f}s",
+    count = len(section.drafts)
+    parts = [
+        _em_spacer(10),
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+        f'<td style="font-family:{_FONT};font-size:13.5px;font-weight:800;color:{M_INK};">'
+        f'{e(channel_label(section.channel))}'
+        f' <span style="font-size:12px;font-weight:400;font-style:italic;color:{M_MUTED};">'
+        f"{count} draft{'s' if count != 1 else ''}</span></td>"
+        f'<td align="right" style="font-family:{_FONT};font-size:10px;font-weight:800;'
+        f'letter-spacing:.07em;color:{M_TAG_RED};">POST MANUALLY</td></tr></table>'
     ]
-    html = f'<tr><td style="padding:14px 18px;font-family:{_FONT};color:{MUTED};font-size:12px;line-height:1.7;">{" · ".join(lines)}'
+    if section.channel == next((s.channel for s in digest.sections if s.drafts), None):
+        # First channel with drafts carries the heading + the manual-post note
+        # (mock: "Drafts for your account" heads the X drafts).
+        parts[0:0] = [
+            f'<div style="font-family:{_FONT};font-size:17px;font-weight:800;color:{M_INK};'
+            f'padding-top:4px;">Drafts for your account</div>'
+            f'<div style="font-family:{_FONT};font-size:11px;color:{M_FAINT};">'
+            "The worker never posts; review and post each draft yourself.</div>",
+        ]
+    for i, draft in enumerate(section.drafts, 1):
+        parts.append(
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+            f'<td style="font-family:{_FONT};font-size:13.5px;line-height:1.55;color:{M_BODY_INK};'
+            f'padding:8px 0 6px;">{e(draft)}</td></tr><tr><td>'
+            f"{_mailto_link(draft, f'Copy draft {i}', digest, f'Digest draft {i} (ready to post)')}"
+            "</td></tr></table>"
+        )
+    return parts
+
+
+def _em_footer(digest: Digest) -> list[str]:
+    e = escape
+    collected = " · ".join(
+        f"{channel_label(k).capitalize()} {v}" for k, v in sorted(digest.collection.items())
+    )
+    parts = [
+        _em_hr(),
+        _em_spacer(10),
+        f'<div style="font-family:{_FONT};font-size:11.5px;line-height:1.6;color:{M_FAINT};">'
+        f"Collected {e(collected)} · xAI tool calls {digest.cost.get('search_tool_calls', 0)} · "
+        f"est. cost ${digest.cost.get('total_usd', 0.0):.4f} of "
+        f"${digest.cost.get('budget_usd', 0.25):.2f} budget · duration {digest.duration_s:.0f}s</div>",
+        f'<div style="font-family:{_FONT};font-size:11px;line-height:1.6;color:{M_FAINT};">'
+        "Copy buttons open a pre-addressed email to yourself with the text in the body "
+        "(email cannot run scripts). The worker never posts; you post manually after review.</div>",
+    ]
     if digest.claude_error:
-        html += f'<br><span style="color:{AMBER_INK};font-weight:700;">DRAFTING DEGRADED:</span> {e(digest.claude_error)}'
+        parts.append(
+            f'<div style="font-family:{_FONT};font-size:11.5px;line-height:1.6;color:{M_TAG_RED};">'
+            f"DRAFTING DEGRADED: {e(digest.claude_error)}</div>"
+        )
     for warning in digest.warnings:
-        html += f"<br>WARNING: {e(warning)}"
-    html += "</td></tr>"
-    return _card_table(html, radius=12)
+        parts.append(
+            f'<div style="font-family:{_FONT};font-size:11.5px;line-height:1.6;color:{M_MUTED};">'
+            f"WARNING: {e(warning)}</div>"
+        )
+    return parts
+
+
+def _em_banner(digest: Digest) -> list[str]:
+    if digest.draft_source not in DEGRADED_SOURCES:
+        return []
+    e = escape
+    reason = (
+        f" This run's drafting failed: {digest.claude_error}."
+        if digest.claude_error
+        else ""
+    )
+    return [
+        '<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="em-card" '
+        f'style="width:600px;max-width:600px;background:{M_AMBER_BG};border:1px solid {M_AMBER_LINE};'
+        'border-radius:10px;">'
+        f'<tr><td style="padding:12px 16px;font-family:{_FONT};font-size:12.5px;line-height:1.5;'
+        f'color:{M_AMBER_INK};">{e(TEMPLATE_BANNER)}{e(reason)}</td></tr></table>',
+        _em_spacer(10),
+    ]
 
 
 def render_email_html(digest: Digest) -> str:
-    """The Gmail-facing HTML part: table-based, inline-styled, no JavaScript.
-
-    Cards keep their structure and color tiles when Gmail blocks remote
-    images (the default): thumbnails reserve fixed boxes over channel-tinted
-    cells and author monograms, so a blocked image reads as an empty tile.
-    """
-    parts = _email_open(digest)
-    parts.append(_email_header_card(digest))
+    parts = _em_open(digest)
+    parts.extend(_em_banner(digest))
+    parts.extend(_em_header(digest))
+    parts.append(_em_spacer(10))
+    body: list[str] = []
+    first = True
     for section in digest.sections:
-        parts.append(_spacer())
-        parts.append(_email_section_card(section))
-    parts.append(_spacer(10))
-    parts.append(_email_footer_card(digest))
-    parts.append(_email_close())
+        if not first:
+            body.append(_em_hr())
+            body.append(_em_spacer(12))
+        first = False
+        body.extend(_em_channel_block(section, digest))
+    body.extend(_em_footer(digest))
+    parts.append(
+        '<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="em-card" '
+        f'style="width:600px;max-width:600px;background:#ffffff;border:1px solid {M_CARD_LINE};'
+        'border-radius:10px;">'
+        f'<tr><td class="em-pad" style="padding:16px 22px 18px;">{"".join(body)}</td></tr></table>'
+    )
+    parts.append(_em_close())
     return "\n".join(parts)
+
 
 
 def build_email(digest: Digest, markdown: str, html: str, from_addr: str) -> EmailMessage:

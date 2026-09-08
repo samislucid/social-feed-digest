@@ -183,16 +183,71 @@ def test_html_mirrors_the_channel_shape(base_profile):
     assert "@media" in html
 
 
+def test_email_mock_summary_table_and_disclosure_line(base_profile):
+    digest = _digest(base_profile)
+    html = render_email_html(digest)
+    # Summary table: PLATFORM / POSTS / TO ACT ON, to-act-on struck through.
+    assert "PLATFORM" in html and ">POSTS<" in html and "TO ACT ON" in html
+    assert "text-decoration:line-through" in html  # strike-through counts
+    assert "drafting: claude" in html  # disclosure line carries the real source
+    assert "suggestions to post manually; the worker never posts" in html
+    # Action tags and the left rail. A second Reddit notable without an
+    # engagement suggestion carries the READ ONLY tag.
+    r = next(s for s in digest.sections if s.channel == "reddit")
+    r.notable.append(
+        Notable(
+            index=2,
+            title="Quiet thread worth reading",
+            url="https://reddit.com/r/nfl/2",
+            author="r/nfl",
+            why="",
+        )
+    )
+    html = render_email_html(digest)
+    assert ">COMMENT</div>" in html and "READ ONLY" in html
+    assert ">X</div>" in html  # platform name in the rail
+
+
+def test_email_left_rail_carries_niche_source_and_time(base_profile):
+    digest = _digest(base_profile)
+    x = next(s for s in digest.sections if s.channel == "x")
+    x.notable[0].niche = "ai-core"
+    x.notable[0].source_label = "@modelwatcher"
+    # 19:31 Pacific time, the mock's stamp.
+    x.notable[0].posted_at = datetime(2026, 9, 8, 2, 31, tzinfo=timezone.utc)
+    html = render_email_html(digest)
+    assert "ai-core" in html
+    assert "7:31 PM" in html  # Pacific-time wall clock in the rail
+
+
+def test_email_copy_buttons_are_mailto_and_open_buttons_are_real_links(base_profile):
+    html = render_email_html(_digest(base_profile))
+    # No-JS copy: opens a compose pre-addressed to Sam with the text preloaded.
+    digest = _digest(base_profile)
+    assert f"mailto:{digest.email_to}" in html and "Copy comment" in html and "Copy draft 1" in html
+    assert 'href="https://x.com/u/status/1"' in html
+    assert "Open post" in html and "Open thread" in html
+    assert "<button" not in html and "<script" not in html.lower()
+
+
+def test_email_empty_channel_uses_shape_empty_note(base_profile):
+    html = render_email_html(_digest(base_profile))
+    assert "Nothing this run" in html
+    assert "watched inbox" in html
+
+
 def test_email_cards_show_thumbnail_and_engagement_when_held(base_profile):
+    # 2026-09-08 mock redesign: the email is deliberately text-only (the mock
+    # carries no images), so a held image is ignored and no <img> is emitted;
+    # engagement still renders, in the card's left rail.
     digest = _digest(base_profile)
     x = next(s for s in digest.sections if s.channel == "x")
     x.notable[0].image = "https://example.com/thumb.jpg"
     x.notable[0].engagement = 342
     html = render_email_html(digest)
-    assert 'src="https://example.com/thumb.jpg"' in html
-    assert 'alt=""' in html  # image-block-proof: empty alt, tinted tile behind
-    assert "↑ 342" in html  # engagement chip only when held
-    assert "RN" in html  # monogram fallback tile for the reddit card
+    assert 'src="https://example.com/thumb.jpg"' not in html
+    assert "<img" not in html
+    assert "342" in html  # engagement still shown when held
 
 
 def test_page_cards_show_thumbnail_engagement_and_monogram(base_profile):
@@ -216,5 +271,7 @@ def test_build_email_keeps_subject_and_both_parts(base_profile):
     assert "<script" not in body.lower()
     assert 'href="https://x.com/u/status/1"' in body
     assert "the worker never posts" in body
-    assert "Drafts for your account (post manually)" in body
-    assert 'bgcolor="#f2f3f7"' in body  # Gmail-safe fixed-width container on light bg
+    assert "Drafts for your account" in body and "POST MANUALLY" in body
+    assert "suggestions to post manually; the worker never posts" in body
+    assert 'bgcolor="#f0f0f2"' in body  # Gmail-safe fixed-width container on light bg
+    assert "PLATFORM" in body and "TO ACT ON" in body  # mock summary table
