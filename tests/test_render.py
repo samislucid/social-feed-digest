@@ -184,14 +184,27 @@ def test_html_mirrors_the_channel_shape(base_profile):
 
 
 def test_email_mock_summary_table_and_disclosure_line(base_profile):
-    html = render_email_html(_digest(base_profile))
+    digest = _digest(base_profile)
+    html = render_email_html(digest)
     # Summary table: PLATFORM / POSTS / TO ACT ON, to-act-on struck through.
     assert "PLATFORM" in html and ">POSTS<" in html and "TO ACT ON" in html
-    assert "<s>" in html and "</s>" in html  # strike-through counts
+    assert "text-decoration:line-through" in html  # strike-through counts
     assert "drafting: claude" in html  # disclosure line carries the real source
     assert "suggestions to post manually; the worker never posts" in html
-    # Action tags and the left rail.
-    assert ">COMMENT</td>" in html and "READ ONLY" in html
+    # Action tags and the left rail. A second Reddit notable without an
+    # engagement suggestion carries the READ ONLY tag.
+    r = next(s for s in digest.sections if s.channel == "reddit")
+    r.notable.append(
+        Notable(
+            index=2,
+            title="Quiet thread worth reading",
+            url="https://reddit.com/r/nfl/2",
+            author="r/nfl",
+            why="",
+        )
+    )
+    html = render_email_html(digest)
+    assert ">COMMENT</div>" in html and "READ ONLY" in html
     assert ">X</div>" in html  # platform name in the rail
 
 
@@ -199,7 +212,9 @@ def test_email_left_rail_carries_niche_source_and_time(base_profile):
     digest = _digest(base_profile)
     x = next(s for s in digest.sections if s.channel == "x")
     x.notable[0].niche = "ai-core"
-    x.notable[0].posted_at = datetime(2026, 9, 7, 19, 31, tzinfo=timezone.utc)
+    x.notable[0].source_label = "@modelwatcher"
+    # 19:31 Pacific time, the mock's stamp.
+    x.notable[0].posted_at = datetime(2026, 9, 8, 2, 31, tzinfo=timezone.utc)
     html = render_email_html(digest)
     assert "ai-core" in html
     assert "7:31 PM" in html  # Pacific-time wall clock in the rail
@@ -207,8 +222,9 @@ def test_email_left_rail_carries_niche_source_and_time(base_profile):
 
 def test_email_copy_buttons_are_mailto_and_open_buttons_are_real_links(base_profile):
     html = render_email_html(_digest(base_profile))
-    assert "mailto:?to=" in html  # no-JS copy: opens a compose with the text preloaded
-    assert "Copy comment" in html and "Copy draft 1" in html
+    # No-JS copy: opens a compose pre-addressed to Sam with the text preloaded.
+    digest = _digest(base_profile)
+    assert f"mailto:{digest.email_to}" in html and "Copy comment" in html and "Copy draft 1" in html
     assert 'href="https://x.com/u/status/1"' in html
     assert "Open post" in html and "Open thread" in html
     assert "<button" not in html and "<script" not in html.lower()
