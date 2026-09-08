@@ -30,6 +30,10 @@ CHANNEL_NAMES = {"x": "X", "reddit": "Reddit", "linkedin": "LinkedIn", "web": "W
 # Subject tag when drafts fell back, so a degraded run is visible in the inbox
 # before it is opened. The real failure reason lives in the run footer.
 DEGRADED_SUBJECT_TAG = "[DEGRADED: template drafts]"
+PARTIAL_SUBJECT_TAG = "[DEGRADED: partial drafts]"
+# Draft sources that read as degraded on every surface (subject, banner, footer).
+# claude-partial runs kept most claude drafting but template-patched the gaps.
+DEGRADED_SOURCES = ("template-fallback", "claude-partial")
 TEMPLATE_BANNER = (
     "TEMPLATE DRAFT (claude CLI unavailable in this environment): placeholder content below"
     " until the claude CLI is installed and authenticated (see RUNBOOK.md, section 5)."
@@ -80,6 +84,8 @@ class Digest:
         s = f"{self.subject_prefix} {self.run_tag} - {posts} posts, {drafts} drafts"
         if self.draft_source == "template-fallback":
             s += f" {DEGRADED_SUBJECT_TAG}"
+        elif self.draft_source == "claude-partial":
+            s += f" {PARTIAL_SUBJECT_TAG}"
         return s
 
 
@@ -181,7 +187,7 @@ def render_markdown(digest: Digest) -> str:
     )
     lines.append("")
     lines.append(f"_{MANUAL_POSTING_NOTE}_")
-    if digest.draft_source == "template-fallback":
+    if digest.draft_source in DEGRADED_SOURCES:
         lines.append("")
         lines.append(f"> {_degraded_banner_text(digest)}")
     for section in digest.sections:
@@ -317,7 +323,7 @@ def render_html(digest: Digest) -> str:
         f"drafting: {e(digest.draft_source)} · est. external cost: ${digest.cost.get('total_usd', 0.0):.4f}</p>",
         f'<p class="note">{e(MANUAL_POSTING_NOTE)}</p>',
     ]
-    if digest.draft_source == "template-fallback":
+    if digest.draft_source in DEGRADED_SOURCES:
         parts.append(f'<div class="banner">{e(_degraded_banner_text(digest))}</div>')
     parts.append(
         f'<div class="stats"><div class="big">{posts}<small>post{"s" if posts != 1 else ""}</small></div>'
@@ -539,7 +545,7 @@ def _email_header_card(digest: Digest) -> str:
         f'<p style="margin:8px 0 0;font-family:{_FONT};color:{FAINT};font-size:12px;line-height:1.5;">'
         f"{e(MANUAL_POSTING_NOTE)}</p>",
     ]
-    if digest.draft_source == "template-fallback":
+    if digest.draft_source in DEGRADED_SOURCES:
         inner.append(
             f'<div style="margin-top:12px;background:{AMBER_BG};border:1px solid {AMBER_LINE};'
             f'border-radius:10px;padding:10px 12px;font-family:{_FONT};color:{AMBER_INK};'

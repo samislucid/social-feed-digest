@@ -153,6 +153,12 @@ def test_subject_counts_and_degraded_tag(base_profile):
     assert digest.subject == "[Feed Digest] 2026-09-07_0930 - 2 posts, 2 drafts"
     degraded = _digest(base_profile, draft_source="template-fallback", claude_error="claude binary not found on PATH")
     assert degraded.subject.endswith(DEGRADED_SUBJECT_TAG)
+    # Partial claude runs degrade the surfaces too, with their own honest tag.
+    partial = _digest(base_profile, draft_source="claude-partial", claude_error="incomplete claude response, template patches applied: web: no summary")
+    assert partial.subject.endswith("[DEGRADED: partial drafts]")
+    assert "template patches applied" in render_markdown(partial)
+    assert "template patches applied" in render_email_html(partial)
+    assert "template patches applied" in render_html(partial)
     md = render_markdown(degraded)
     assert "TEMPLATE DRAFT" in md
     assert "This run's drafting failed: claude binary not found on PATH." in md  # banner names the reason
