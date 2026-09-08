@@ -714,6 +714,28 @@ def _em_post_card(section: Section, n: Notable, digest: Digest, with_comment: bo
     )
 
 
+def _em_web_list(section: Section) -> list[str]:
+    """Web/news context: compact "Also spotted" list, no card chrome (mock keeps
+    web to the counts and the product spec calls it a compact context list)."""
+    e = escape
+    parts = [
+        f'<div style="font-family:{_FONT};font-size:13px;font-weight:800;color:{M_INK};">'
+        "Also spotted (web and news)</div>",
+        f'<div style="font-family:{_FONT};font-size:12.5px;color:{M_MUTED};padding:2px 0 6px;">'
+        f"{e(section.summary)}</div>" if section.summary else "",
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">',
+    ]
+    for n in section.notable:
+        who = f' <span style="color:{M_MUTED};">{e(n.author)}</span>' if n.author.strip() else ""
+        parts.append(
+            '<tr><td style="padding:5px 0;border-top:1px solid #eee;">'
+            f'<a href="{e(n.url)}" style="font-family:{_FONT};font-size:13px;color:{M_ACCENT};'
+            f'text-decoration:underline;">{e(n.title)}</a>{who}</td></tr>'
+        )
+    parts.append("</table>")
+    return parts
+
+
 def _em_readonly_rows(section: Section, rows: list[Notable]) -> str:
     e = escape
     parts = [
@@ -738,6 +760,8 @@ def _em_readonly_rows(section: Section, rows: list[Notable]) -> str:
 
 def _em_channel_block(section: Section, digest: Digest) -> list[str]:
     e = escape
+    if section.channel == "web":
+        return _em_web_list(section)
     if not section.notable and not section.drafts:
         note = (
             "Nothing this run. LinkedIn arrives through the watched inbox; nothing reached it."
