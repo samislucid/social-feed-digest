@@ -748,7 +748,8 @@ def _em_channel_block(section: Section, digest: Digest) -> list[str]:
             '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
             f'<td style="font-family:{_FONT};font-size:13.5px;color:{M_BODY_INK};padding:4px 0;">'
             f'<span style="font-weight:800;color:{M_INK};font-size:14px;">{e(channel_label(section.channel).upper())}</span>'
-            f'<div style="padding-top:4px;">{e(note)}</div></td></tr></table>',
+            f'<div style="padding-top:4px;">{e(note)}</div></td></tr></table>'
+            + "".join(_em_channel_drafts(section, digest)),
         ]
     parts: list[str] = []
     if section.summary:
@@ -765,42 +766,44 @@ def _em_channel_block(section: Section, digest: Digest) -> list[str]:
         parts.append(_em_post_card(section, n, digest, with_comment=has_comment))
     if readonly:
         parts.append(_em_readonly_rows(section, readonly))
+    parts.extend(_em_channel_drafts(section, digest))
     return parts
 
 
-def _em_drafts_block(digest: Digest) -> list[str]:
-    with_drafts = [s for s in digest.sections if s.drafts]
-    if not with_drafts:
+def _em_channel_drafts(section: Section, digest: Digest) -> list[str]:
+    """The channel's drafts, inside the channel block right after its cards
+    (mock: X's "Drafts for your account" sits between the X card and Reddit)."""
+    if not section.drafts:
         return []
     e = escape
+    count = len(section.drafts)
     parts = [
-        _em_hr(),
-        _em_spacer(14),
-        f'<div style="font-family:{_FONT};font-size:17px;font-weight:800;color:{M_INK};">Drafts for your account</div>',
-        _em_spacer(4),
-        f'<div style="font-family:{_FONT};font-size:11px;color:{M_FAINT};">'
-        "The worker never posts; review and post each draft yourself.</div>",
-        _em_spacer(6),
+        _em_spacer(10),
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+        f'<td style="font-family:{_FONT};font-size:13.5px;font-weight:800;color:{M_INK};">'
+        f'{e(channel_label(section.channel))}'
+        f' <span style="font-size:12px;font-weight:400;font-style:italic;color:{M_MUTED};">'
+        f"{count} draft{'s' if count != 1 else ''}</span></td>"
+        f'<td align="right" style="font-family:{_FONT};font-size:10px;font-weight:800;'
+        f'letter-spacing:.07em;color:{M_TAG_RED};">POST MANUALLY</td></tr></table>'
     ]
-    for section in with_drafts:
-        count = len(section.drafts)
+    if section.channel == next((s.channel for s in digest.sections if s.drafts), None):
+        # First channel with drafts carries the heading + the manual-post note
+        # (mock: "Drafts for your account" heads the X drafts).
+        parts[0:0] = [
+            f'<div style="font-family:{_FONT};font-size:17px;font-weight:800;color:{M_INK};'
+            f'padding-top:4px;">Drafts for your account</div>'
+            f'<div style="font-family:{_FONT};font-size:11px;color:{M_FAINT};">'
+            "The worker never posts; review and post each draft yourself.</div>",
+        ]
+    for i, draft in enumerate(section.drafts, 1):
         parts.append(
             '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
-            f'<td style="font-family:{_FONT};font-size:13.5px;font-weight:800;color:{M_INK};">'
-            f'{e(channel_label(section.channel))}'
-            f' <span style="font-size:12px;font-weight:400;font-style:italic;color:{M_MUTED};">'
-            f"{count} draft{'s' if count != 1 else ''}</span></td>"
-            f'<td align="right" style="font-family:{_FONT};font-size:10px;font-weight:800;'
-            f'letter-spacing:.07em;color:{M_TAG_RED};">POST MANUALLY</td></tr></table>'
+            f'<td style="font-family:{_FONT};font-size:13.5px;line-height:1.55;color:{M_BODY_INK};'
+            f'padding:8px 0 6px;">{e(draft)}</td></tr><tr><td>'
+            f"{_mailto_link(draft, f'Copy draft {i}', digest, f'Digest draft {i} (ready to post)')}"
+            "</td></tr></table>"
         )
-        for i, draft in enumerate(section.drafts, 1):
-            parts.append(
-                '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
-                f'<td style="font-family:{_FONT};font-size:13.5px;line-height:1.55;color:{M_BODY_INK};'
-                f'padding:8px 0 6px;">{e(draft)}</td></tr><tr><td>'
-                f"{_mailto_link(draft, f'Copy draft {i}', digest, f'Digest draft {i} (ready to post)')}"
-                "</td></tr></table>"
-            )
     return parts
 
 
@@ -865,7 +868,6 @@ def render_email_html(digest: Digest) -> str:
             body.append(_em_spacer(12))
         first = False
         body.extend(_em_channel_block(section, digest))
-    body.extend(_em_drafts_block(digest))
     body.extend(_em_footer(digest))
     parts.append(
         '<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="em-card" '
