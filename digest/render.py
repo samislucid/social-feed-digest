@@ -779,7 +779,7 @@ def _em_drafts_block(digest: Digest) -> list[str]:
         f'<div style="font-family:{_FONT};font-size:17px;font-weight:800;color:{M_INK};">Drafts for your account</div>',
         _em_spacer(4),
         f'<div style="font-family:{_FONT};font-size:11px;color:{M_FAINT};">'
-        "POST MANUALLY - the worker never posts; review and post each draft yourself.</div>",
+        "The worker never posts; review and post each draft yourself.</div>",
         _em_spacer(6),
     ]
     for section in with_drafts:
