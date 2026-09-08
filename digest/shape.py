@@ -12,6 +12,7 @@ A claude failure changes the words, never the shape.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from .items import Item
 from .rank import Topic
@@ -49,6 +50,12 @@ class Notable:
     why: str
     engagement: int = 0  # shown on the card only when held (e.g. Reddit score)
     image: str = ""  # thumbnail URL held by the pipeline or attached at render time
+    # 2026-09-08 mock redesign: the email's left rail shows the niche, the
+    # source label (e.g. "r/LLMDevs"), and the post's local time. All three
+    # default empty; the page renderer ignores them, so the page is unchanged.
+    niche: str = ""
+    source_label: str = ""
+    posted_at: datetime | None = None
 
 
 @dataclass
@@ -96,6 +103,14 @@ def topic_author(topic: Topic) -> str:
     return ""
 
 
+def _primary_item(topic: Topic, channel: str | None = None) -> Item | None:
+    """The topic's highest-priority item (optionally within one channel)."""
+    items = [i for i in topic.items if channel is None or i.channel == channel]
+    if not items:
+        return None
+    return sorted(items, key=lambda i: _PRIMARY.get(i.channel, 9))[0]
+
+
 def notable_from_topic(topic: Topic, index: int, why: str = "") -> Notable:
     primary = primary_channel(topic)
     engagement = sum(item.engagement for item in topic.items if item.channel == primary)
@@ -105,6 +120,18 @@ def notable_from_topic(topic: Topic, index: int, why: str = "") -> Notable:
         if candidate.startswith(("http://", "https://")):
             image = candidate
             break
+    # 2026-09-08 email redesign: the left rail wants the niche id, the source
+    # label of the primary item (e.g. "r/LLMDevs" next to REDDIT), and the
+    # post's local time. topic.niche is the niche id ("ai-core"); the human
+    # label lives in the profile and the email renders ids as-is (the mock
+    # shows the id, e.g. "asian-economics").
+    source_item = _primary_item(topic)
+    source_label = source_item.source_label if source_item else ""
+    posted_at = None
+    for item in sorted(topic.items, key=lambda i: _PRIMARY.get(i.channel, 9)):
+        if item.published:
+            posted_at = item.published
+            break
     return Notable(
         index=index,
         title=topic.title,
@@ -113,6 +140,9 @@ def notable_from_topic(topic: Topic, index: int, why: str = "") -> Notable:
         why=why or topic.why_hot,
         engagement=engagement,
         image=image,
+        niche=topic.niche,
+        source_label=source_label,
+        posted_at=posted_at,
     )
 
 
