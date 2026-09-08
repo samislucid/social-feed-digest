@@ -10,7 +10,7 @@ from digest import deliver
 from digest.deliver import prune, run_tag_for, send_email, store_digest
 from digest.items import Item
 from digest.rank import build_topics
-from digest.render import Digest, build_email, render_html, render_markdown
+from digest.render import Digest, build_email, render_email_html, render_html, render_markdown
 from digest.shape import Engagement, Notable, shape_sections
 
 
@@ -51,6 +51,8 @@ def test_digest_json_serializes_channel_sections(base_profile, settings):
     assert data["sections"][0]["drafts"] == ["Draft one.", "Draft two."]
     assert data["sections"][0]["engagements"][0]["action"] == "comment"
     assert data["sections"][0]["notable"][0]["url"] == "https://x.com/u/status/1"
+    assert data["sections"][0]["notable"][0]["engagement"] == 0  # stat appears only when held
+    assert data["sections"][0]["notable"][0]["image"] == ""  # optional thumbnail field
     assert "post_ideas" not in data
     assert "shortlist" not in data
     assert "topics" not in data
@@ -60,7 +62,7 @@ def test_store_digest_writes_all_artifacts(base_profile, settings):
     digest = _digest(base_profile)
     md = render_markdown(digest)
     html = render_html(digest)
-    msg = build_email(digest, md, html, "digest@example.com")
+    msg = build_email(digest, md, render_email_html(digest), "digest@example.com")
     run_dir = store_digest(digest, md, html, msg, settings)
 
     names = {p.name for p in run_dir.iterdir()}
@@ -147,7 +149,7 @@ def test_prune_removes_old_runs_but_keeps_recent(base_profile, settings):
     old = _digest(base_profile, run_tag="2020-01-01_0000")
     md = render_markdown(old)
     html = render_html(old)
-    msg: EmailMessage = build_email(old, md, html, "digest@example.com")
+    msg: EmailMessage = build_email(old, md, render_email_html(old), "digest@example.com")
     store_digest(old, md, html, msg, settings)
     new = _digest(base_profile)
     store_digest(new, md, html, msg, settings)

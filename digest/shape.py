@@ -47,6 +47,8 @@ class Notable:
     url: str
     author: str
     why: str
+    engagement: int = 0  # shown on the card only when held (e.g. Reddit score)
+    image: str = ""  # thumbnail URL held by the pipeline or attached at render time
 
 
 @dataclass
@@ -94,13 +96,23 @@ def topic_author(topic: Topic) -> str:
     return ""
 
 
-def _notable_from(topic: Topic, index: int, why: str = "") -> Notable:
+def notable_from_topic(topic: Topic, index: int, why: str = "") -> Notable:
+    primary = primary_channel(topic)
+    engagement = sum(item.engagement for item in topic.items if item.channel == primary)
+    image = ""
+    for item in sorted(topic.items, key=lambda i: _PRIMARY.get(i.channel, 9)):
+        candidate = str((item.extra or {}).get("image") or "").strip()
+        if candidate.startswith(("http://", "https://")):
+            image = candidate
+            break
     return Notable(
         index=index,
         title=topic.title,
         url=topic.source_url,
         author=topic_author(topic),
         why=why or topic.why_hot,
+        engagement=engagement,
+        image=image,
     )
 
 
@@ -148,7 +160,7 @@ def shape_sections(topics: list[Topic], profile: dict) -> list[Section]:
     for section in sections:
         if section.channel in ("reddit", "web"):
             section.notable = [
-                _notable_from(topic, i) for i, topic in enumerate(section.candidates, 1)
+                notable_from_topic(topic, i) for i, topic in enumerate(section.candidates, 1)
             ]
     # Web/news is context only; with nothing collected it is omitted rather
     # than shipping an empty section.
