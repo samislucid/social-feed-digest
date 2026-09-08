@@ -44,7 +44,15 @@ def digest_to_dict(digest: Digest) -> dict:
                 "intro": s.intro,
                 "empty_note": s.empty_note,
                 "notable": [
-                    {"index": n.index, "title": n.title, "url": n.url, "author": n.author, "why": n.why}
+                    {
+                        "index": n.index,
+                        "title": n.title,
+                        "url": n.url,
+                        "author": n.author,
+                        "why": n.why,
+                        "engagement": n.engagement,
+                        "image": n.image,
+                    }
                     for n in s.notable
                 ],
                 "drafts": s.drafts,
@@ -97,9 +105,23 @@ def _index_html(digest: Digest, settings: Settings) -> str:
         f'<li><a href="{escape(p.name)}.html">{escape(p.name)}</a></li>' for p in runs if (settings.data_dir / "digests" / p.name / "digest.html").exists()
     )
     return (
-        "<!doctype html><html><head><meta charset='utf-8'><title>Digest index</title></head><body>"
-        f"<h1>Digests</h1><p>Latest run: {escape(digest.run_tag)} - "
-        f"<a href='latest.html'>open latest</a></p><ul>{rows}</ul></body></html>"
+        "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<title>Digest index</title><style>"
+        "body{margin:0;background:#f2f3f7;color:#3d4350;"
+        "font:15px/1.55 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}"
+        ".wrap{max-width:640px;margin:0 auto;padding:36px 20px 56px}"
+        "h1{font-size:22px;color:#16181d;margin:0 0 4px}"
+        ".sub{color:#5f6470;font-size:13.5px;margin:0 0 18px}"
+        ".card{background:#fff;border:1px solid #e4e6ee;border-radius:14px;padding:8px 6px}"
+        "ul{list-style:none;margin:0;padding:0}li{border-top:1px solid #f0f1f5}"
+        "li:first-child{border-top:0}"
+        "a{display:block;padding:10px 14px;color:#4f46e5;text-decoration:none;font-size:14.5px;font-weight:600}"
+        "a:hover{background:#eef0fe;border-radius:8px}"
+        "</style></head><body><div class='wrap'>"
+        "<h1>Digests</h1>"
+        f"<p class='sub'>Latest run: {escape(digest.run_tag)} · <a href='latest.html'>open latest</a></p>"
+        f"<div class='card'><ul>{rows}</ul></div></div></body></html>"
     )
 
 

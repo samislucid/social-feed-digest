@@ -69,6 +69,8 @@ def e2e_env(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "collect_x_topics", lambda *a, **k: ([Item(channel="x", title=t.title, url=t.url, summary=t.summary, extra=dict(t.extra)) for t in _X], {"search_tool_calls": 2, "cost_usd": 0.02}))
     monkeypatch.setattr(cli, "collect_web_sweep", lambda *a, **k: ([Item(channel="web", title=t.title, url=t.url, summary=t.summary) for t in _WEB], {"search_tool_calls": 1, "cost_usd": 0.01}))
     monkeypatch.setattr(cli, "collect_linkedin", lambda *a, **k: [Item(channel="linkedin", title=t.title, url=t.url, summary=t.summary, source_label=t.source_label) for t in _LINKEDIN])
+    # Thumbnails are a render-time nicety: stub the network attach for determinism.
+    monkeypatch.setattr(cli, "attach_post_images", lambda *a, **k: None)
 
     env = {
         "XAI_API_KEY": "k",  # drafting enabled; collectors stubbed above
@@ -136,8 +138,24 @@ def test_e2e_channel_first_degraded_run(e2e_env, tmp_path, capsys):
     assert {s["channel"] for s in digest_json["sections"]} == {"x", "linkedin", "reddit", "web"}
     reddit = next(s for s in digest_json["sections"] if s["channel"] == "reddit")
     assert len(reddit["notable"]) == 5
+    assert "engagement" in reddit["notable"][0] and "image" in reddit["notable"][0]
+    assert reddit["notable"][0]["image"] == ""  # seeded inputs hold no thumbnails
     linkedin = next(s for s in digest_json["sections"] if s["channel"] == "linkedin")
     assert linkedin["drafts"]  # seeded LinkedIn input produced drafts (template)
+
+    # Visual upgrade: page carries the new card/stat-strip system; the email
+    # part is Gmail-safe (tables, no JS) and looks complete with no images.
+    page_html = (run_dir / "digest.html").read_text(encoding="utf-8")
+    assert '<div class="statbar">' in page_html
+    assert '<div class="post">' in page_html
+    assert '<div class="tile">' in page_html  # monogram fallback tiles
+    assert "<script" not in page_html.lower()
+    email_part = msg.get_body(("html",))
+    assert email_part is not None
+    email_html = email_part.get_content()
+    assert "<script" not in email_html.lower()
+    assert 'width="600"' in email_html
+    assert "src=" not in email_html  # nothing held -> no remote images, tiles only
 
     summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
     assert summary["draft_source"] == "template-fallback"

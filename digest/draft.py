@@ -29,7 +29,7 @@ import shutil
 import subprocess
 
 from .config import Settings
-from .shape import Engagement, Notable, Section, topic_author
+from .shape import Engagement, Notable, Section, notable_from_topic, topic_author
 from .rank import Topic
 
 CLAUDE_TIMEOUT_S = 240
@@ -338,13 +338,7 @@ def _eval_claude(sections: list[Section], parsed: dict, apply: bool) -> list[str
                 if topic is None:
                     continue
                 notable.append(
-                    Notable(
-                        index=int(entry["index"]),
-                        title=topic.title,
-                        url=topic.source_url,
-                        author=topic_author(topic),
-                        why=str(entry.get("why") or "").strip(),
-                    )
+                    notable_from_topic(topic, int(entry["index"]), why=str(entry.get("why") or "").strip())
                 )
             if notable:
                 if apply:
@@ -416,13 +410,7 @@ def _fill_template(sections: list[Section]) -> None:
             section.summary = _template_summary(section)
         if section.channel in ("x", "linkedin") and not section.notable:
             section.notable = [
-                Notable(
-                    index=i,
-                    title=t.title,
-                    url=t.source_url,
-                    author=topic_author(t),
-                    why=t.why_hot,
-                )
+                notable_from_topic(t, i, why=t.why_hot)
                 for i, t in enumerate(section.candidates[:3], 1)
             ]
         if section.channel in ("x", "linkedin") and not section.drafts:

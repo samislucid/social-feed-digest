@@ -20,8 +20,9 @@ from .collect.xai_collector import XaiError, collect_web_sweep, collect_x_topics
 from .config import ConfigError, Settings, load_profile
 from .deliver import local_date, prune, run_tag_for, send_email, store_digest
 from .draft import draft_digest
+from .images import attach_post_images
 from .rank import build_topics
-from .render import Digest, build_email, render_html, render_markdown
+from .render import Digest, build_email, render_email_html, render_html, render_markdown
 from .server import make_server
 from .shape import shape_sections
 
@@ -187,8 +188,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
 
     markdown = render_markdown(digest)
+    attach_post_images(digest)  # best-effort thumbnails; monogram fallback otherwise
     html = render_html(digest)
-    message = build_email(digest, markdown, html, settings.smtp_from or "digest@localhost")
+    email_html = render_email_html(digest)
+    message = build_email(digest, markdown, email_html, settings.smtp_from or "digest@localhost")
     run_dir = store_digest(digest, markdown, html, message, settings)
     email_status = send_email(message, settings, dry_run=args.dry_run, log=_log)
     prune(settings, int(profile.get("retention_days", 30)), log=_log)

@@ -24,8 +24,10 @@ link share); comments are grounded in the post's own text. The Brightstack
 positioning/voice block in `profile.yaml` steers drafting. Delivered by email
 (Resend SMTP) and served from a private token-protected page. A run whose claude
 drafting failed says so in the email subject (`[DEGRADED: template drafts]`) and
-names the exact failure reason in the run footer. See
-`samples/digest-shape-sample.md` for a full example.
+names the exact failure reason in the run footer and top banner. See
+`samples/digest-shape-sample.md` for a full example, plus rendered previews of
+the redesigned surfaces: `samples/digest-shape-sample.html` (email) and
+`samples/digest-page-sample.html` (token page).
 
 ## Note for Reddit developer-platform reviewers
 

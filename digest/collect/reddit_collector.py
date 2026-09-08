@@ -96,6 +96,14 @@ class PrawRedditSource(RedditSource):
             title = post.title or ""
             if not title:
                 continue
+            extra: dict = {"num_comments": int(post.num_comments or 0)}
+            try:  # preview thumbnail when Reddit provides one (image posts); optional extra
+                preview = (getattr(post, "preview", None) or {}).get("images") or []
+                src = str((preview[0].get("source") or {}).get("url") or "") if preview else ""
+                if src.startswith(("http://", "https://")):
+                    extra["image"] = src
+            except Exception:  # preview shape varies; thumbnails are a nice-to-have
+                pass
             items.append(
                 Item(
                     channel="reddit",
@@ -105,7 +113,7 @@ class PrawRedditSource(RedditSource):
                     source_label=f"r/{subreddit}",
                     published=datetime.fromtimestamp(post.created_utc, tz=timezone.utc),
                     engagement=int(post.score or 0),
-                    extra={"num_comments": int(post.num_comments or 0)},
+                    extra=extra,
                 )
             )
         return items

@@ -10,6 +10,22 @@ systemd timer (07:30 & 17:30 local) ─> digest run ─> data/digests/<tag>/ + d
                                                  └─> private page (token required)
 ```
 
+Visual design (2026-09-08 upgrade): the email and the private page render from
+one shared visual system - post-preview cards (link, author/handle, engagement
+stat when held, one-line why-it-matters, thumbnail), a compact stat strip
+(posts/drafts counts plus a per-channel bar), scannable channel sections with a
+subtle per-channel color hint, mobile-friendly single column. Thumbnails are
+best-effort: images the pipeline already holds win; otherwise one og:image
+attempt with a short timeout. With images blocked (the Gmail default) every
+card still reads complete via a channel-tinted monogram tile. No new env vars,
+no new dependencies, no change to collection or drafting.
+
+Degraded runs name the real claude failure reason at the top of the email
+("This run's drafting failed: ...") and in the subject tag:
+`[DEGRADED: template drafts]` for full fallback, `[DEGRADED: partial drafts]`
+when claude succeeded for some sections and the gap-patcher template-filled
+the rest (the footer keeps the exact reason either way).
+
 Digest shape (2026-09-07 reshape, channel-first and action-first): the email
 reads by channel, not by a ranked cross-channel topic list.
 
@@ -49,6 +65,19 @@ cd /opt/social-feed-digest
 python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
+
+### Updating to a new version (2026-09-08 visual upgrade and later)
+
+```bash
+cd /opt/social-feed-digest
+git pull                            # fast-forward to merged main
+sudo systemctl restart digest-page  # page server keeps old code until restarted
+```
+
+That is the whole deploy. The twice-daily run starts a fresh `digest.service`
+process every time, so new email/rendering code applies at the next scheduled
+run with no restart; restarting `digest-page` takes a second and does not
+affect the timer.
 
 Set the server timezone once so schedule times below are Sam-local:
 

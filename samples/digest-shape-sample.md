@@ -1,10 +1,10 @@
-# Social Feed Digest - 2026-09-07_1318
+# Social Feed Digest - 2026-09-07_1857
 
-_2026-09-07 20:18 UTC · profile: Sam Kim - Social Feed Digest · drafting: template-fallback · est. external cost: $0.0312_
+_2026-09-08 01:57 UTC · profile: Sam Kim - Social Feed Digest · drafting: template-fallback · est. external cost: $0.0300_
 
 _All drafts and comments are suggestions to post manually; the worker never posts._
 
-> TEMPLATE DRAFT (claude CLI unavailable in this environment): placeholder content below until the claude CLI is installed and authenticated (see RUNBOOK.md, section 5).
+> TEMPLATE DRAFT (claude CLI unavailable in this environment): placeholder content below until the claude CLI is installed and authenticated (see RUNBOOK.md, section 5). This run's drafting failed: claude binary not found: DIGEST_CLAUDE_BIN=/nonexistent/claude is missing or not executable.
 
 ## X
 
@@ -52,23 +52,23 @@ _All drafts and comments are suggestions to post manually; the worker never post
 
 ## Reddit (best 5 of 8 Reddit posts this run)
 
-5 Reddit threads on your topics this run; loudest: "LLM GPU supply thread with bench numbers".
+5 Reddit threads on your topics this run; loudest: "LLM agents thread with bench numbers".
 
-1. LLM GPU supply thread with bench numbers - r/LLMDevs
-   Post: https://reddit.com/r/LLMDevs/4
+1. LLM agents thread with bench numbers - r/LLMDevs
+   Post: https://reddit.com/r/LLMDevs/1
    Why hot: Active on r/LLMDevs
-   Suggested comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: LLM GPU supply thread with bench numbers - Active on r/LLMDevs
+   Suggested comment: [TEMPLATE DRAFT (claude CLI unavailable in this environment)] Worth engaging: LLM agents thread with bench numbers - Active on r/LLMDevs
 
-2. LLM RAG pipelines thread with bench numbers - r/LLMDevs
-   Post: https://reddit.com/r/LLMDevs/6
-   Why hot: Active on r/LLMDevs
-
-3. LLM inference cost thread with bench numbers - r/LLMDevs
+2. LLM inference cost thread with bench numbers - r/LLMDevs
    Post: https://reddit.com/r/LLMDevs/3
    Why hot: Active on r/LLMDevs
 
-4. LLM open models thread with bench numbers - r/LLMDevs
+3. LLM open models thread with bench numbers - r/LLMDevs
    Post: https://reddit.com/r/LLMDevs/5
+   Why hot: Active on r/LLMDevs
+
+4. LLM RAG pipelines thread with bench numbers - r/LLMDevs
+   Post: https://reddit.com/r/LLMDevs/6
    Why hot: Active on r/LLMDevs
 
 5. LLM fine-tuning data thread with bench numbers - r/LLMDevs
@@ -83,6 +83,6 @@ _All drafts and comments are suggestions to post manually; the worker never post
 
 ## Run footer
 - Collection: LinkedIn: 1, Reddit: 8, Web: 1, X: 2
-- xAI Live Search tool calls: 3 · est. cost: $0.0312 (budget $0.25)
+- xAI Live Search tool calls: 3 · est. cost: $0.0300 (budget $0.25)
 - Run duration: 0.0s
 - DRAFTING DEGRADED: claude binary not found: DIGEST_CLAUDE_BIN=/nonexistent/claude is missing or not executable
