@@ -81,7 +81,7 @@ def e2e_env(monkeypatch, tmp_path):
     return tmp_path / "data"
 
 
-def test_e2e_channel_first_degraded_run(e2e_env, tmp_path):
+def test_e2e_channel_first_degraded_run(e2e_env, tmp_path, capsys):
     rc = cli.main(
         [
             "run",
@@ -96,6 +96,10 @@ def test_e2e_channel_first_degraded_run(e2e_env, tmp_path):
         ]
     )
     assert rc == 0
+    # The done line names the claude outcome even on a degraded run, so the
+    # ops grep for claude|warn|degraded reflects real run health.
+    out = capsys.readouterr().out
+    assert "claude degraded (claude binary not found" in out
 
     runs = sorted((e2e_env / "digests").iterdir())
     assert runs, "no run directory written"

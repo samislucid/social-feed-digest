@@ -219,8 +219,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         }
         Path(args.json_summary).write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    # The done line must name the claude outcome on every run, clean or not, so
+    # an ops grep for "claude|warn|degraded" reflects real run health.
+    if settings.disable_claude:
+        claude_outcome = "claude disabled (template drafts)"
+    elif digest.draft_source == "claude":
+        claude_outcome = "claude ok"
+    else:
+        claude_outcome = f"claude degraded ({digest.claude_error or 'template fallback'})"
     _log(
         f"done: {len(topics)}/{max_topics} topics -> {len(digest.sections)} sections, "
+        f"{claude_outcome}, "
         f"external cost ${total_cost:.4f} (budget ${budget:.2f}), "
         f"{digest.duration_s:.0f}s, artifacts in {run_dir}"
     )

@@ -8,7 +8,13 @@ marked TEMPLATE DRAFT so nobody mistakes them for final copy.
 A claude failure is never silent: `_run_claude` returns the real reason (binary
 missing from the service PATH, non-zero exit with claude's own stderr, timeout,
 empty or unparsable output) and `draft_digest` carries it out as `claude_error`
-so the email subject and run footer can explain a degraded digest.
+so the email subject and run footer can explain a degraded digest. An incomplete
+response - a missing channel or field for a channel that has posts - is retried
+once before any gap-patching; remaining gaps are patched with TEMPLATE content
+and logged as WARN with the real reason. `draft_source` distinguishes a partial
+patch ("claude-partial") from a full fallback ("template-fallback"). Web/news is
+deterministic context the prompt never contracts, so it is never counted as a
+gap - that prompt/validator mismatch silently degraded the 2026-09-07 17:30 run.
 
 The drafting target is the channel-first shape (shape.py): per channel an
 activity summary, notable posts, ready-to-post drafts for Sam's own account,
@@ -195,7 +201,8 @@ def _build_prompt(sections: list[Section], profile: dict) -> str:
         + "\n"
         f"{inputs}\n\n"
         "TASK\n"
-        "Return JSON only (no prose, no code fence) exactly in this schema:\n"
+        "Return JSON only (no prose, no code fence) exactly in this schema, with\n"
+        "every key and field present:\n"
         '{"x": {"summary": "...", "notable": [{"index": 1, "why": "..."}], '
         '"drafts": ["..."], "engagements": [{"index": 1, "action": "comment", "comment": "..."}]}, '
         '"linkedin": {"summary": "...", "notable": [{"index": 1, "why": "..."}], '
@@ -215,8 +222,12 @@ def _build_prompt(sections: list[Section], profile: dict) -> str:
         "  sentence on why the repost is worth Sam's name.\n"
         "- 'index' must reference the numbered list of that channel; links and authors are\n"
         "  attached from source data and never invented.\n"
-        "- If a channel list says (none this run), return an empty summary and empty lists\n"
-        "  for it.\n"
+        "- Completeness is a hard requirement: every channel key (x, linkedin, reddit)\n"
+        "  and every field in the schema MUST appear in your response. Never omit a key\n"
+        "  or a field. If a channel list says (none this run), still return all of its\n"
+        "  fields with explicit empty values (summary \"\" and empty arrays). For a\n"
+        "  channel that has posts, an empty summary or empty arrays are a defect that\n"
+        "  forces a retry. The web/news background needs no JSON entry; context only.\n"
         "\nSam posts everything manually. You never post; you only draft."
     )
 
@@ -293,19 +304,28 @@ def _candidate_at(section: Section, index: object) -> Topic | None:
     return None
 
 
-def _fill_from_claude(sections: list[Section], parsed: dict) -> list[str]:
-    """Apply parsed claude JSON to the sections; return human-readable gaps."""
+def _eval_claude(sections: list[Section], parsed: dict, apply: bool) -> list[str]:
+    """Validate (and optionally apply) parsed claude JSON; return the gaps.
+
+    The contract is exactly what the prompt demands: for each of x/linkedin/
+    reddit with candidates, every field must be present and non-empty. Channels
+    without candidates render a visible note and are never gaps; web/news is
+    shaped deterministically and the prompt never contracts it, so it is never
+    a gap either. With apply=False this is the read-only validator that decides
+    whether a response is complete before it touches the sections.
+    """
     gaps: list[str] = []
     for section in sections:
         channel = section.channel
-        if not section.candidates:
-            continue  # empty channel this run: the visible note renders, no gap
+        if channel == "web" or not section.candidates:
+            continue  # web is deterministic background; an empty channel shows its note
         data = parsed.get(channel)
         data = data if isinstance(data, dict) else {}
 
         summary = str(data.get("summary") or "").strip()
         if summary:
-            section.summary = summary
+            if apply:
+                section.summary = summary
         else:
             gaps.append(f"{channel}: no summary")
 
@@ -327,7 +347,8 @@ def _fill_from_claude(sections: list[Section], parsed: dict) -> list[str]:
                     )
                 )
             if notable:
-                section.notable = notable
+                if apply:
+                    section.notable = notable
             else:
                 gaps.append(f"{channel}: no notable picks")
 
@@ -337,7 +358,8 @@ def _fill_from_claude(sections: list[Section], parsed: dict) -> list[str]:
                 if isinstance(x, str) and str(x).strip()
             ][:_DRAFT_MAX]
             if drafts:
-                section.drafts = drafts
+                if apply:
+                    section.drafts = drafts
             else:
                 gaps.append(f"{channel}: no drafts")
 
@@ -368,10 +390,21 @@ def _fill_from_claude(sections: list[Section], parsed: dict) -> list[str]:
             if len(engagements) >= _ENGAGEMENT_MAX:
                 break
         if engagements:
-            section.engagements = engagements
+            if apply:
+                section.engagements = engagements
         else:
             gaps.append(f"{channel}: no engagement suggestions")
     return gaps
+
+
+def _claude_gaps(sections: list[Section], parsed: dict) -> list[str]:
+    """Read-only validation: which demanded fields did this response miss?"""
+    return _eval_claude(sections, parsed, apply=False)
+
+
+def _fill_from_claude(sections: list[Section], parsed: dict) -> list[str]:
+    """Apply parsed claude JSON to the sections; return human-readable gaps."""
+    return _eval_claude(sections, parsed, apply=True)
 
 
 def _fill_template(sections: list[Section]) -> None:
@@ -411,13 +444,19 @@ def _fill_template(sections: list[Section]) -> None:
 def draft_digest(sections: list[Section], profile: dict, settings: Settings, log=print) -> dict:
     """Fill channel sections with summaries, drafts, and engagement suggestions.
 
-    Returns {"source": "claude" | "template-fallback", "claude_error": str | None}.
-    Sections are filled in place. claude -p is the voice; any failure or gap is
-    patched with clearly-marked template content so the run degrades instead of
-    dying, and the real reason surfaces in the run footer.
+    Returns {"source": "claude" | "claude-partial" | "template-fallback",
+    "claude_error": str | None}. Sections are filled in place. claude -p is the
+    voice; an incomplete or unparsable response is retried once before any
+    patching, so a clean run costs exactly one claude call and a hard failure
+    (binary missing, non-zero exit, timeout) is never retried. Any remaining
+    failure or gap is patched with clearly-marked template content so the run
+    degrades instead of dying; patches WARN with the real reason, and
+    draft_source distinguishes a partial patch from a full fallback.
     """
     result: dict = {"source": "claude", "claude_error": None}
     parsed = None
+    claude_ran = False
+    retry_note = ""
     if any(s.candidates for s in sections) and not settings.disable_claude:
         prompt = None
         try:
@@ -433,21 +472,50 @@ def draft_digest(sections: list[Section], profile: dict, settings: Settings, log
                 result["claude_error"] = err
                 log(f"WARN: claude -p unavailable: {err}")
             else:
+                claude_ran = True
                 parsed = _extract_json(out or "")
-                if parsed is None:
-                    result["claude_error"] = "claude output was not parsable JSON"
+                if parsed is None or _claude_gaps(sections, parsed):
+                    # Incomplete or unparsable: retry claude once before any
+                    # patching, then keep the attempt with fewer gaps (a tie
+                    # keeps the first attempt; unparsable counts as worst).
+                    retry_out, retry_err = _run_claude(prompt, settings)
+                    retry_parsed = None if retry_err else _extract_json(retry_out or "")
+                    first_gaps = _claude_gaps(sections, parsed) if parsed is not None else None
+                    retry_gaps = (
+                        _claude_gaps(sections, retry_parsed) if retry_parsed is not None else None
+                    )
+                    if retry_gaps is not None and (
+                        first_gaps is None or len(retry_gaps) < len(first_gaps)
+                    ):
+                        parsed = retry_parsed
+                        first_gaps = retry_gaps
+                    if retry_err:
+                        retry_note = f" (claude retry failed: {retry_err})"
+                    elif retry_parsed is None:
+                        retry_note = " (claude retry was also not parsable)"
+                    elif first_gaps == []:
+                        log("claude retry succeeded after an incomplete first response")
+                    else:
+                        retry_note = " (after 1 retry)"
 
     gaps: list[str] = []
     if parsed is None:
         _fill_template(sections)
+        if claude_ran and not result["claude_error"]:
+            # Hard claude failures already WARNed above; unparsable output did not.
+            result["claude_error"] = f"claude output was not parsable JSON{retry_note}"
+            log(f"WARN: claude -p unusable, template drafts applied: {result['claude_error']}")
     else:
         gaps = _fill_from_claude(sections, parsed)
         if gaps:
             _fill_template(sections)
             result["claude_error"] = (
-                "incomplete claude response, template patches applied: " + "; ".join(gaps)
+                "incomplete claude response, template patches applied: "
+                + "; ".join(gaps)
+                + retry_note
             )
-
-    if parsed is None or gaps:
+            result["source"] = "claude-partial"
+            log(f"WARN: {result['claude_error']}")
+    if parsed is None:
         result["source"] = "template-fallback"
     return result

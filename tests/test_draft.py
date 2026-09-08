@@ -115,7 +115,7 @@ def test_claude_invalid_indexes_are_dropped_and_degrade(base_profile, settings, 
     monkeypatch.setattr(draft_mod, "_run_claude", lambda prompt, s=None: (payload, None))
     sections = _sections(base_profile)
     result = draft_mod.draft_digest(sections, base_profile, settings)
-    assert result["source"] == "template-fallback"
+    assert result["source"] == "claude-partial"
     assert "incomplete claude response" in (result["claude_error"] or "")
     by = {s.channel: s for s in sections}
     # No hallucinated links: nothing at index 99 exists, so the notable pick and
@@ -135,7 +135,7 @@ def test_partial_claude_response_patches_only_the_gaps(base_profile, settings, m
     ]
     sections = shape_sections(build_topics(items, base_profile), base_profile)
     result = draft_mod.draft_digest(sections, base_profile, settings)
-    assert result["source"] == "template-fallback"
+    assert result["source"] == "claude-partial"
     by = {s.channel: s for s in sections}
     # X content survived; only the missing LinkedIn pieces were patched.
     assert "TEMPLATE" not in by["x"].drafts[0]
@@ -203,3 +203,149 @@ def test_template_drafts_synthesize_across_topics(base_profile, settings):
     # Two items only produce one X candidate here, so the fallback must not
     # pretend a cross-topic synthesis exists.
     assert all("build on" in d or "connect" in d for d in x.drafts)
+
+
+def _fake_claude(responses):
+    """_run_claude stand-in returning canned (out, err) pairs in call order."""
+    calls: list[str] = []
+
+    def fake(prompt, s=None):
+        calls.append(prompt)
+        return responses[len(calls) - 1] if len(calls) <= len(responses) else responses[-1]
+
+    return fake, calls
+
+
+def test_incomplete_response_retries_once_then_succeeds(base_profile, settings, monkeypatch):
+    settings.disable_claude = False
+    partial = json.loads(_claude_payload())
+    del partial["x"]  # claude omitted the whole channel on the first try
+    fake, calls = _fake_claude([(json.dumps(partial), None), (_claude_payload(), None)])
+    monkeypatch.setattr(draft_mod, "_run_claude", fake)
+    logs: list[str] = []
+    sections = _sections(base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings, log=logs.append)
+    assert result == {"source": "claude", "claude_error": None}
+    assert len(calls) == 2  # one retry, fired only because the first pass was incomplete
+    by = {s.channel: s for s in sections}
+    assert by["x"].summary.startswith("Two eval-focused posts")
+    assert "TEMPLATE" not in by["x"].drafts[0]
+    assert any("retry succeeded" in line for line in logs)
+
+
+def test_retry_fails_into_partial_patches_with_warn(base_profile, settings, monkeypatch):
+    settings.disable_claude = False
+    partial = _claude_payload(
+        x={"summary": "X summary from claude.", "notable": [], "drafts": [], "engagements": []}
+    )
+    fake, calls = _fake_claude([(partial, None), (partial, None)])
+    monkeypatch.setattr(draft_mod, "_run_claude", fake)
+    logs: list[str] = []
+    sections = _sections(base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings, log=logs.append)
+    assert result["source"] == "claude-partial"  # partial, not a full fallback
+    assert result["claude_error"].startswith(
+        "incomplete claude response, template patches applied: x: no notable picks"
+    )
+    assert "(after 1 retry)" in (result["claude_error"] or "")
+    assert len(calls) == 2
+    by = {s.channel: s for s in sections}
+    assert by["x"].summary == "X summary from claude."  # claude's real content survives
+    assert by["x"].drafts and all(d.startswith("[TEMPLATE DRAFT") for d in by["x"].drafts)
+    warns = [line for line in logs if line.startswith("WARN: incomplete claude response")]
+    assert warns and "x: no drafts" in warns[0]
+
+
+def test_retry_prefers_the_attempt_with_fewer_gaps(base_profile, settings, monkeypatch):
+    settings.disable_claude = False
+    worse = json.loads(_claude_payload())
+    worse["x"] = {"summary": "S.", "notable": [], "drafts": [], "engagements": []}  # 3 gaps
+    fake, calls = _fake_claude([(json.dumps(worse), None), (_claude_payload(), None)])
+    monkeypatch.setattr(draft_mod, "_run_claude", fake)
+    sections = _sections(base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings)
+    assert result == {"source": "claude", "claude_error": None}
+    assert len(calls) == 2
+    by = {s.channel: s for s in sections}
+    assert by["x"].summary.startswith("Two eval-focused posts")  # the complete retry won
+
+
+def test_retry_does_not_regress_to_a_worse_attempt(base_profile, settings, monkeypatch):
+    settings.disable_claude = False
+    first = json.loads(_claude_payload())
+    first["reddit"] = {"summary": "One injury thread for the sports niche.", "engagements": []}
+    worse = json.loads(_claude_payload())
+    worse["x"]["drafts"] = []
+    worse["x"]["engagements"] = []
+    fake, calls = _fake_claude([(json.dumps(first), None), (json.dumps(worse), None)])
+    monkeypatch.setattr(draft_mod, "_run_claude", fake)
+    sections = _sections(base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings)
+    assert result["source"] == "claude-partial"
+    assert "reddit: no engagement suggestions" in (result["claude_error"] or "")
+    assert "x: no drafts" not in (result["claude_error"] or "")  # the better attempt won
+    by = {s.channel: s for s in sections}
+    assert by["x"].drafts[0].startswith("Open weights")  # first attempt's drafts kept
+    assert by["reddit"].engagements[0].comment.startswith("[TEMPLATE DRAFT")
+
+
+def test_unparsable_then_success_recovers(base_profile, settings, monkeypatch):
+    settings.disable_claude = False
+    fake, calls = _fake_claude([("here is your digest: {oops", None), (_claude_payload(), None)])
+    monkeypatch.setattr(draft_mod, "_run_claude", fake)
+    sections = _sections(base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings)
+    assert result == {"source": "claude", "claude_error": None}
+    assert len(calls) == 2
+
+
+def test_unparsable_after_retry_degrades_fully_with_warn(base_profile, settings, monkeypatch):
+    settings.disable_claude = False
+    fake, calls = _fake_claude([("{oops", None), ("still not json", None)])
+    monkeypatch.setattr(draft_mod, "_run_claude", fake)
+    logs: list[str] = []
+    sections = _sections(base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings, log=logs.append)
+    assert result["source"] == "template-fallback"
+    assert "not parsable" in (result["claude_error"] or "")
+    assert len(calls) == 2
+    by = {s.channel: s for s in sections}
+    assert by["x"].drafts and all(d.startswith("[TEMPLATE DRAFT") for d in by["x"].drafts)
+    assert any(line.startswith("WARN:") and "template drafts" in line for line in logs)
+
+
+def test_hard_failure_is_not_retried(base_profile, settings, monkeypatch):
+    settings.disable_claude = False
+    reason = "claude binary not found on PATH"
+    fake, calls = _fake_claude([(None, reason)])
+    monkeypatch.setattr(draft_mod, "_run_claude", fake)
+    sections = _sections(base_profile)
+    result = draft_mod.draft_digest(sections, base_profile, settings)
+    assert len(calls) == 1  # deterministic hard failures are not retried
+    assert result["source"] == "template-fallback"
+    assert result["claude_error"] == reason
+
+
+def test_web_section_is_never_a_gap(base_profile, settings, monkeypatch):
+    """Regression for the 2026-09-07 17:30 production run.
+
+    The prompt schema has no web entry (web/news is deterministic context), so
+    claude omitting web is compliant, not a defect: it must not set claude_error
+    or flip draft_source - exactly the silent degradation that run showed.
+    """
+    settings.disable_claude = False
+    fake, calls = _fake_claude([(_claude_payload(), None)])
+    monkeypatch.setattr(draft_mod, "_run_claude", fake)
+    items = _items() + [
+        Item(
+            channel="web",
+            title="Enterprises pilot coding agents at scale",
+            url="https://example.com/evals",
+            source_label="example.com",
+        ),
+    ]
+    sections = shape_sections(build_topics(items, base_profile), base_profile)
+    assert any(s.channel == "web" and s.candidates for s in sections)
+    result = draft_mod.draft_digest(sections, base_profile, settings)
+    assert result == {"source": "claude", "claude_error": None}
+    assert len(calls) == 1  # no retry: the response was complete under the real contract
