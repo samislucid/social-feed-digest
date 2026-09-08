@@ -146,6 +146,34 @@ def _brightstack_block(profile: dict) -> str:
     )
 
 
+def _writing_block(profile: dict) -> str:
+    """Sam's writing goal (profile.yaml `writing` block) as drafting context.
+
+    Present only when the profile defines it, so fixture profiles are
+    unaffected. Keeps suggested comments and post ideas on the focus topic
+    substantive and accurate enough to inform Sam's own writing.
+    """
+    w = profile.get("writing")
+    if not isinstance(w, dict):
+        return ""
+    lines = []
+    for key, label in (
+        ("focus_topic", "Focus topic"),
+        ("why", "Why"),
+        ("quality_bar", "Quality bar"),
+    ):
+        value = str(w.get(key) or "").strip()
+        if value:
+            lines.append(f"- {label}: {value}")
+    if not lines:
+        return ""
+    return (
+        "\nWriting focus (high-priority topic for Sam's own writing):\n"
+        + "\n".join(lines)
+        + "\n"
+    )
+
+
 _CHANNEL_LABELS = {"x": "X posts", "linkedin": "LinkedIn posts", "reddit": "Reddit threads"}
 
 
@@ -198,6 +226,7 @@ def _build_prompt(sections: list[Section], profile: dict) -> str:
         "Don't: " + "; ".join(_guidance_strings(d.get("donts"))) + "\n"
         "Voice samples:\n" + samples + "\n"
         + _brightstack_block(profile)
+        + _writing_block(profile)
         + "\n"
         f"{inputs}\n\n"
         "TASK\n"

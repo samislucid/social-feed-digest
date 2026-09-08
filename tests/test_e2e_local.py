@@ -54,6 +54,13 @@ _X = [
         summary="Three agent frameworks merged their runtimes this week; teams are re-evaluating.",
         extra={"author": "@buildinpublic"},
     ),
+    Item(
+        channel="x",
+        title="Frontier API pricing war: per-token price cut 40%",
+        url="https://x.com/u/status/3",
+        summary="Two providers cut API pricing; token cost comparisons are now the default eval.",
+        extra={"author": "@tokenfurnace"},
+    ),
 ]
 _WEB = [
     Item(channel="web", title="Enterprises pilot coding agents at scale", url="https://example.com/news/1", summary="Two more enterprises moved pilots to production.")
@@ -114,6 +121,10 @@ def test_e2e_channel_first_degraded_run(e2e_env, tmp_path, capsys):
     assert "### Posts getting attention" in md
     assert "https://x.com/u/status/1" in md
     assert "@modelwatcher" in md
+    # Token costs / LLM economics is the high-priority core topic: the seeded
+    # token-cost post surfaces in the digest output.
+    assert "https://x.com/u/status/3" in md
+    assert "API pricing" in md
     assert "### Drafts for your account (post manually)" in md
     assert "### Comments and reposts worth making" in md
     # LinkedIn mirrors the X structure.

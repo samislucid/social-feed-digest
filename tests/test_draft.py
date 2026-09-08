@@ -195,6 +195,20 @@ def test_prompt_built_from_real_repo_profile_keeps_voice_block():
     assert "max_digest_posts" not in prompt  # config noise never reaches the model
 
 
+def test_prompt_carries_sams_writing_focus_from_real_repo_profile():
+    profile = load_profile(ROOT / "profile.yaml")
+    prompt = draft_mod._build_prompt(_sections(profile), profile)
+    assert "Writing focus" in prompt
+    assert "token furnace" in prompt
+    assert "substantive and accurate" in prompt
+    assert "LLMs, agents, harnesses, and applications" in prompt
+
+
+def test_writing_focus_block_absent_when_profile_defines_none(base_profile):
+    prompt = draft_mod._build_prompt(_sections(base_profile), base_profile)
+    assert "Writing focus" not in prompt
+
+
 def test_template_drafts_synthesize_across_topics(base_profile, settings):
     settings.disable_claude = True
     sections = _sections(base_profile)

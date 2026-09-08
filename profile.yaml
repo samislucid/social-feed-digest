@@ -11,6 +11,11 @@ x_search:
   candidate_topics: 8       # candidates requested from the model before ranking
 
 reddit:
+  # Token costs / LLM economics is covered on Reddit through these existing
+  # sources: the token-costs niche keywords rank cost posts from them. A new
+  # subreddit (e.g. r/LocalLLaMA) is only worth adding if coverage proves thin,
+  # since anonymous RSS already 429s intermittently and every source trades
+  # against run duration.
   subreddits:
     - LLMDevs
     - ArtificialInteligence
@@ -70,6 +75,22 @@ drafting:
     - no post ideas that restate one article, retitle a single story, or propose link shares
     - no Brightstack pitches in threads where it does not genuinely fit
 
+# Sam's writing goal, consumed by digest/draft.py _build_prompt as drafting
+# context: suggested comments and post ideas on the focus topic should be
+# substantive and accurate enough to inform Sam's own writing.
+writing:
+  focus_topic: >-
+    Token costs and LLM economics: cost comparisons across LLMs, agents,
+    harnesses, and applications.
+  why: >-
+    Sam's X account is "the token furnace"; he is building a detailed
+    understanding of token costs and writes about this topic on X.
+  quality_bar: >-
+    Suggested comments and post ideas on LLM cost comparisons must be
+    substantive and accurate enough to inform Sam's writing: concrete numbers
+    and real prices from the source posts, assumptions stated; never invent
+    figures.
+
 # Brightstack positioning + voice, consumed by digest/draft.py _build_prompt.
 # Short by design: light product relevance in AI-workflow threads, never promo.
 brightstack:
@@ -111,6 +132,13 @@ delivery:
 retention_days: 30
 
 niches:
+  - id: token-costs
+    label: Token costs and LLM economics
+    weight: 1.5
+    priority: high   # scanned every run: scout must return token-cost candidates when signal exists
+    keywords: [token cost, per-token price, API pricing, LLM pricing, model pricing,
+               cost comparison, cost per token, inference cost, token spend,
+               LLM economics, price cut, price drop]
   - id: ai-core
     label: Core AI
     weight: 1.5

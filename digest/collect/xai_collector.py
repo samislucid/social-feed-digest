@@ -127,8 +127,22 @@ def _niche_lines(profile: dict) -> str:
     lines = []
     for niche in profile["niches"]:
         kws = ", ".join(niche["keywords"][:8])
-        lines.append(f"- {niche['id']} ({niche.get('label', niche['id'])}): {kws}")
+        mark = " [HIGH PRIORITY]" if niche.get("priority") == "high" else ""
+        lines.append(f"- {niche['id']} ({niche.get('label', niche['id'])}): {kws}{mark}")
     return "\n".join(lines)
+
+
+def _high_priority_note(profile: dict) -> str:
+    """One-line scout rule for niches marked priority: high in profile.yaml."""
+    ids = [str(n.get("id") or "") for n in profile.get("niches") or [] if n.get("priority") == "high"]
+    ids = [i for i in ids if i]
+    if not ids:
+        return ""
+    return (
+        " High-priority niches (" + ", ".join(ids) + "): return at least one candidate "
+        "topic in them when any matching signal exists in the window, even if other "
+        "topics are louder."
+    )
 
 
 def _run_tool_search(
@@ -181,7 +195,7 @@ def collect_x_topics(
         "You are a trend scout. Use x_search to find what is genuinely hot on X in the last "
         f"{from_date} to {to_date} window for the audience of an AI builder and investor.\n"
         f"Niche clusters and keywords (weight in parentheses):\n{_niche_lines(profile)}\n"
-        f"{handle_note}\n"
+        f"{handle_note}{_high_priority_note(profile)}\n"
         "Rank candidates by momentum (reposts, replies, velocity) and niche fit. "
         f"Return {candidates} candidate topics as STRICT JSON only, no prose:\n"
         '{"topics": [{"title": "...", "why_hot": "one line with the concrete signal", '

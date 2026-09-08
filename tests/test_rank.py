@@ -92,3 +92,37 @@ def test_fewer_than_min_topics_still_returns(base_profile):
     items = [_item("Single LLM topic", channel="reddit")]
     topics = build_topics(items, base_profile)
     assert len(topics) == 1
+
+
+def test_token_cost_post_assigns_to_the_token_costs_niche(base_profile):
+    from pathlib import Path
+
+    from digest.config import load_profile
+
+    profile = load_profile(Path(__file__).resolve().parents[1] / "profile.yaml")
+    cost = _item(
+        "Frontier API pricing war: per-token price cut 40%",
+        channel="x",
+        url="https://x.com/u/status/9",
+        summary="Cost comparison thread: token cost down across two providers.",
+    )
+    topics = build_topics([cost], profile)
+    assert topics[0].niche == "token-costs"
+
+
+def test_token_cost_post_outranks_generic_ai_for_cost_keywords(base_profile):
+    from pathlib import Path
+
+    from digest.config import load_profile
+
+    profile = load_profile(Path(__file__).resolve().parents[1] / "profile.yaml")
+    cost = _item(
+        "Frontier API pricing war: per-token price cut 40%",
+        channel="x",
+        url="https://x.com/u/status/9",
+        summary="Cost comparison thread: token cost down across two providers.",
+    )
+    generic = _item("Open-weights model tops reasoning evals", channel="x", url="https://x.com/u/status/10")
+    topics = build_topics([cost, generic], profile)
+    assert topics[0].niche == "token-costs"
+    assert topics[0].score > topics[1].score

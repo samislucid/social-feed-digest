@@ -75,9 +75,10 @@ sudo systemctl restart digest-page  # page server keeps old code until restarted
 ```
 
 That is the whole deploy. The twice-daily run starts a fresh `digest.service`
-process every time, so new email/rendering code applies at the next scheduled
-run with no restart; restarting `digest-page` takes a second and does not
-affect the timer.
+process every time, so Sam deploys by `git pull` alone and the worker picks up
+the new code (including `profile.yaml` topic changes) at the next run start,
+with no restart. Restart `digest-page` only when page rendering code changed;
+content-only changes (profile.yaml, collection, drafting) need just the pull.
 
 Set the server timezone once so schedule times below are Sam-local:
 
